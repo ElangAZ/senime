@@ -1,10 +1,47 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { 
-  Play, Home, Calendar, CheckSquare, Hash, ChevronDown, Search, History, 
+  Play, Home, Calendar, CheckSquare, Hash, ChevronDown, Search,
   Trash2, Flame, Sparkles, ArrowRight, Tv, Info, Film, Clock, 
-  ArrowUpDown, ThumbsUp, SkipBack, SkipForward, Download, List, Star, 
-  User, Video, X, Loader2, PlaySquare, AlertCircle, CheckCircle2 
+  SortAsc, ThumbsUp, SkipBack, SkipForward, Download, List, Star, 
+  User, Video, X, Loader2, Square, AlertCircle, CheckCircle2,
+  History, ArrowUpDown
 } from 'lucide-react';
+
+// Error Boundary to prevent full black screen on render crash
+class ErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
+  }
+  componentDidCatch(error, info) {
+    console.error('React render error:', error, info);
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div style={{
+          minHeight: '100vh', display: 'flex', flexDirection: 'column',
+          alignItems: 'center', justifyContent: 'center',
+          background: '#0a0a12', color: '#fff', fontFamily: 'Outfit, sans-serif', padding: '2rem'
+        }}>
+          <h2 style={{ color: '#e040fb', marginBottom: '1rem' }}>Terjadi Kesalahan</h2>
+          <p style={{ color: '#aaa', marginBottom: '1.5rem' }}>Halaman gagal dimuat. Detail error di console browser.</p>
+          <pre style={{ background: '#1a1a2e', padding: '1rem', borderRadius: '8px', fontSize: '12px', maxWidth: '600px', overflow: 'auto', color: '#ff6b6b' }}>
+            {this.state.error?.message}
+          </pre>
+          <button onClick={() => window.location.reload()} style={{
+            marginTop: '1.5rem', padding: '0.75rem 2rem', background: 'linear-gradient(135deg, #7c3aed, #a855f7)',
+            color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontSize: '14px'
+          }}>Muat Ulang</button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 const API_BASE = 'https://www.sankavollerei.com/anime';
 
@@ -250,7 +287,7 @@ export default function App() {
     <>
       {/* Header */}
       <header className="main-header">
-        <div class="header-container">
+        <div className="header-container">
           <a href="#/" className="logo">
             <Play className="logo-icon" fill="currentColor" />
             <span className="logo-text">Neko<span>Watch</span></span>
@@ -523,8 +560,8 @@ function HomeView({ historyItems, clearHistory, triggerToast }) {
                     : 'Streaming nonton anime sub indo ter-update setiap hari hanya di NekoWatch.'}
                 </p>
                 <div className="hero-actions">
-                  <a href={`#/anime/${spotlight.animeId || spotlight.href.split('/').pop()}`} className="btn-hero-play">
-                    <Play size={16} fill="currentColor" /> Detail & Episode
+                  <a href={`#/anime/${spotlight.animeId || (spotlight.href ? spotlight.href.split('/').pop() : '')}`} className="btn-hero-play">
+                    <Play size={16} fill="currentColor" /> Detail &amp; Episode
                   </a>
                 </div>
               </div>
