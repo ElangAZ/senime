@@ -33,12 +33,12 @@ async function fetchAPI(endpoint) {
                           window.location.hostname === '127.0.0.1' || 
                           window.location.port !== ''; // running on a local development port
 
-    // We try local proxy first if on a web server, then direct, then public proxies
+    // We try local/Vercel proxy first if on a web server, then direct, then public proxies
     const requestStrategies = [];
     
-    if (isLocalServer && window.location.protocol.startsWith('http')) {
+    if (window.location.protocol.startsWith('http')) {
         requestStrategies.push({
-            name: 'Local Proxy Server',
+            name: 'Local/Vercel Proxy Server',
             urlFn: () => `/api${endpoint}`
         });
     }
