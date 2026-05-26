@@ -4,7 +4,7 @@ import {
   Trash2, Flame, Sparkles, ArrowRight, Tv, Info, Film, Clock, 
   SortAsc, ThumbsUp, SkipBack, SkipForward, Download, List, Star, 
   User, Video, X, Loader2, Square, AlertCircle, CheckCircle2,
-  History, ArrowUpDown
+  History, ArrowUpDown, PlaySquare
 } from 'lucide-react';
 
 // Error Boundary to prevent full black screen on render crash
@@ -316,8 +316,9 @@ export default function App() {
           </nav>
 
           <div className="search-box">
-            <form onSubmit={handleSearchSubmit}>
+            <form id="search-form" onSubmit={handleSearchSubmit}>
               <input 
+                id="search-input"
                 ref={searchInputRef}
                 type="text" 
                 placeholder="Cari anime kesukaanmu..." 
