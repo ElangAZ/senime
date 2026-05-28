@@ -73,11 +73,14 @@ const GENRES_LIST = [
 ];
 
 // Fetch API with automated multi-proxy fallback
-async function fetchAPI(endpoint) {
-  // Automatically prefix endpoint if using Samehadaku
+async function fetchAPI(endpoint, source = 'otakudesu') {
+  // Automatically prefix endpoint if using source
   let finalEndpoint = endpoint;
-  if (globalAnimeSource === 'samehadaku' && !endpoint.startsWith('/samehadaku')) {
+  const resolvedSource = typeof source === 'boolean' ? (source ? 'samehadaku' : 'otakudesu') : source;
+  if (resolvedSource === 'samehadaku' && !endpoint.startsWith('/samehadaku')) {
     finalEndpoint = `/samehadaku${endpoint}`;
+  } else if (resolvedSource === 'animasu' && !endpoint.startsWith('/animasu')) {
+    finalEndpoint = `/animasu${endpoint}`;
   }
   const url = `${API_BASE}${finalEndpoint}`;
   const requestStrategies = [];
@@ -218,6 +221,14 @@ function getSeriesSlug(item) {
   return (stripped || cleanSlug || rawSlug).replace(/^\/+|\/+$/g, '').trim();
 }
 
+// Helper to extract series slug from Animasu episode slug
+function getAnimasuSeriesSlug(episodeSlug) {
+  if (!episodeSlug) return '';
+  let slug = episodeSlug.replace(/^nonton-/, '');
+  slug = slug.replace(/-episode-\d+/, '');
+  return slug;
+}
+
 // Helper to extract just the episode number from an episode title
 function extractEpisodeNumber(title) {
   if (title === undefined || title === null) return '';
@@ -287,24 +298,7 @@ export default function App() {
     setTimeout(() => setToast(null), 3000);
   };
 
-  const [animeSource, setAnimeSourceState] = useState(() => {
-    const stored = localStorage.getItem('nekowatch_anime_source') || 'otakudesu';
-    globalAnimeSource = stored;
-    return stored;
-  });
-
-  const setAnimeSource = (src) => {
-    localStorage.setItem('nekowatch_anime_source', src);
-    globalAnimeSource = src;
-    setAnimeSourceState(src);
-    triggerToast(`Sumber anime diubah ke ${src === 'otakudesu' ? 'Otakudesu' : 'Samehadaku'}!`, 'success');
-    window.location.hash = '#/';
-    setTimeout(() => {
-      window.location.reload();
-    }, 300);
-  };
-
-  const toggleFavorite = (item, isDonghua = false) => {
+  const toggleFavorite = (item, isDonghua = false, isSamehadaku = false, isAnimasu = false) => {
     const itemId = item.animeId || item.slug || item.href?.split('/').pop() || '';
     if (!itemId) return;
 
@@ -321,7 +315,9 @@ export default function App() {
           poster: item.poster,
           status: item.status || 'Completed',
           type: item.type || (isDonghua ? 'Donghua' : 'TV'),
-          isDonghua: isDonghua
+          isDonghua: isDonghua,
+          isSamehadaku: isSamehadaku,
+          isAnimasu: isAnimasu
         }];
         triggerToast(`Ditambahkan ke Favorit!`, 'success');
       }
@@ -352,31 +348,65 @@ export default function App() {
     const timer = setTimeout(async () => {
       try {
         const q = encodeURIComponent(searchQuery.trim());
-        const [animeRes, donghuaRes] = await Promise.allSettled([
-          fetchAPI(`/search/${q}`),
+        const [otakuRes, samehadakuRes, animasuRes, donghuaRes] = await Promise.allSettled([
+          fetchAPI(`/search/${q}`, 'otakudesu'),
+          fetchAPI(`/search?q=${q}`, 'samehadaku'),
+          fetchAPI(`/search/${q}`, 'animasu'),
           fetchDonghuaAPI(`/donghua/search/${q}`)
         ]);
 
         let merged = [];
 
-        if (animeRes.status === 'fulfilled' && animeRes.value?.data?.animeList) {
-          merged = [...animeRes.value.data.animeList.slice(0, 4)];
+        if (otakuRes.status === 'fulfilled' && otakuRes.value?.data?.animeList) {
+          const list = otakuRes.value.data.animeList.slice(0, 3).map(item => ({
+            ...item,
+            source: 'Otakudesu',
+            isSamehadaku: false,
+            isAnimasu: false
+          }));
+          merged = [...merged, ...list];
+        }
+
+        if (samehadakuRes.status === 'fulfilled' && samehadakuRes.value?.data?.animeList) {
+          const list = samehadakuRes.value.data.animeList.slice(0, 3).map(item => ({
+            ...item,
+            source: 'Samehadaku',
+            isSamehadaku: true,
+            isAnimasu: false
+          }));
+          merged = [...merged, ...list];
+        }
+
+        if (animasuRes.status === 'fulfilled' && animasuRes.value?.animes) {
+          const list = animasuRes.value.animes.slice(0, 3).map(item => ({
+            animeId: item.slug || '',
+            title: item.title,
+            poster: item.poster,
+            score: item.rating || '',
+            status: item.status_or_day || '',
+            type: item.type || 'TV',
+            source: 'Animasu',
+            isAnimasu: true,
+            isSamehadaku: false
+          }));
+          merged = [...merged, ...list];
         }
 
         if (donghuaRes.status === 'fulfilled' && donghuaRes.value) {
           const dhVal = donghuaRes.value;
           const dhList = dhVal.data || dhVal || [];
           if (Array.isArray(dhList)) {
-            const normalized = dhList.slice(0, 4).map(item => ({
+            const normalized = dhList.slice(0, 3).map(item => ({
               ...item,
               animeId: item.slug || '',
-              isDonghua: true
+              isDonghua: true,
+              source: 'Donghua'
             }));
             merged = [...normalized, ...merged];
           }
         }
 
-        setSuggestions(merged.slice(0, 6));
+        setSuggestions(merged.slice(0, 8));
       } catch (err) {
         console.warn('Autocomplete error:', err.message);
       }
@@ -385,7 +415,7 @@ export default function App() {
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
-  const saveToHistory = (animeId, animeTitle, poster, episodeId, episodeTitle) => {
+  const saveToHistory = (animeId, animeTitle, poster, episodeId, episodeTitle, isSamehadaku = false, isAnimasu = false) => {
     const stored = JSON.parse(localStorage.getItem('nekowatch_history')) || [];
     const filtered = stored.filter(item => item.animeId !== animeId);
     filtered.unshift({
@@ -394,6 +424,8 @@ export default function App() {
       poster,
       episodeId,
       episodeTitle,
+      isSamehadaku,
+      isAnimasu,
       timestamp: Date.now()
     });
     if (filtered.length > 12) filtered.pop();
@@ -438,14 +470,30 @@ export default function App() {
       const parts = route.split('/');
       const page = parts[2] ? parseInt(parts[2]) : 1;
       return <DonghuaView page={page} triggerToast={triggerToast} toggleFavorite={toggleFavorite} isFavorite={isFavorite} />;
+    } else if (route.startsWith('#/anime/samehadaku/')) {
+      const parts = route.split('/');
+      const animeId = parts[3];
+      return <DetailView animeId={animeId} isSamehadaku={true} triggerToast={triggerToast} saveToHistory={saveToHistory} toggleFavorite={toggleFavorite} isFavorite={isFavorite} />;
+    } else if (route.startsWith('#/anime/animasu/')) {
+      const parts = route.split('/');
+      const animeId = parts[3];
+      return <DetailView animeId={animeId} isAnimasu={true} triggerToast={triggerToast} saveToHistory={saveToHistory} toggleFavorite={toggleFavorite} isFavorite={isFavorite} />;
     } else if (route.startsWith('#/anime/')) {
       const parts = route.split('/');
       const animeId = parts[2];
-      return <DetailView animeId={animeId} triggerToast={triggerToast} saveToHistory={saveToHistory} toggleFavorite={toggleFavorite} isFavorite={isFavorite} />;
+      return <DetailView animeId={animeId} isSamehadaku={false} triggerToast={triggerToast} saveToHistory={saveToHistory} toggleFavorite={toggleFavorite} isFavorite={isFavorite} />;
+    } else if (route.startsWith('#/episode/samehadaku/')) {
+      const parts = route.split('/');
+      const episodeId = parts[3];
+      return <StreamView episodeId={episodeId} isSamehadaku={true} triggerToast={triggerToast} saveToHistory={saveToHistory} />;
+    } else if (route.startsWith('#/episode/animasu/')) {
+      const parts = route.split('/');
+      const episodeId = parts[3];
+      return <StreamView episodeId={episodeId} isAnimasu={true} triggerToast={triggerToast} saveToHistory={saveToHistory} />;
     } else if (route.startsWith('#/episode/')) {
       const parts = route.split('/');
       const episodeId = parts[2];
-      return <StreamView episodeId={episodeId} triggerToast={triggerToast} saveToHistory={saveToHistory} />;
+      return <StreamView episodeId={episodeId} isSamehadaku={false} triggerToast={triggerToast} saveToHistory={saveToHistory} />;
     } else if (route.startsWith('#/search/')) {
       const parts = route.split('/');
       const query = parts[2];
@@ -493,17 +541,6 @@ export default function App() {
             </a>
           </nav>
 
-          <div className="source-selector">
-            <button 
-              onClick={() => setAnimeSource(animeSource === 'otakudesu' ? 'samehadaku' : 'otakudesu')}
-              className="source-toggle-btn"
-              title="Ganti Sumber Anime (Otakudesu / Samehadaku)"
-            >
-              <Tv size={14} style={{ color: 'var(--accent)' }} />
-              <span><span>Sumber: </span><strong>{animeSource === 'otakudesu' ? 'Otakudesu' : 'Samehadaku'}</strong></span>
-            </button>
-          </div>
-
           <div className="search-box">
             <form id="search-form" onSubmit={handleSearchSubmit}>
               <input 
@@ -528,19 +565,31 @@ export default function App() {
                   const animeId = anime.animeId || anime.href.split('/').pop();
                   return (
                     <div 
-                      key={animeId} 
+                      key={animeId + '-' + (anime.source || 'default')} 
                       className="suggestion-item" 
                       onClick={() => {
                         setShowSuggestions(false);
                         setSearchQuery('');
-                        const isDh = anime.type === 'Donghua' || anime.isDonghua || anime.href?.includes('/donghua/');
-                        window.location.hash = isDh ? `#/donghua-detail/${animeId}` : `#/anime/${animeId}`;
+                        if (anime.isDonghua) {
+                          window.location.hash = `#/donghua-detail/${animeId}`;
+                        } else if (anime.isSamehadaku) {
+                          window.location.hash = `#/anime/samehadaku/${animeId}`;
+                        } else if (anime.isAnimasu) {
+                          window.location.hash = `#/anime/animasu/${animeId}`;
+                        } else {
+                          window.location.hash = `#/anime/${animeId}`;
+                        }
                       }}
                     >
                       <img className="suggestion-poster" src={anime.poster} alt={anime.title} />
                       <div className="suggestion-info">
                         <span className="suggestion-title">{anime.title}</span>
-                        <span className="suggestion-meta">{anime.status || 'Completed'} &bull; ★ {anime.score && anime.score !== '0' ? anime.score : 'Sub Indo'}</span>
+                        <span className="suggestion-meta">
+                          <span className={`card-source-pill ${anime.isSamehadaku ? 'samehadaku' : anime.isAnimasu ? 'animasu' : anime.isDonghua ? 'samehadaku' : 'otakudesu'}`} style={{ marginRight: '6px', fontSize: '8px', padding: '1px 4px' }}>
+                            {anime.source || (anime.isDonghua ? 'Donghua' : 'Otakudesu')}
+                          </span>
+                          {anime.status || 'Completed'} &bull; ★ {typeof anime.score === 'object' ? anime.score.value : (anime.score && anime.score !== '0' ? anime.score : 'Sub Indo')}
+                        </span>
                       </div>
                     </div>
                   );
@@ -626,7 +675,15 @@ function AnimeGrid({ list, limit, toggleFavorite, isFavorite }) {
       {items.map(anime => {
         const animeId = anime.animeId || anime.href?.split('/').pop() || '';
         const isDh = anime.type === 'Donghua' || anime.isDonghua || anime.href?.includes('/donghua/');
-        const targetHref = isDh ? `#/donghua-detail/${animeId}` : `#/anime/${animeId}`;
+        const isSamehadaku = anime.source === 'Samehadaku' || anime.isSamehadaku;
+        const isAnimasu = anime.source === 'Animasu' || anime.isAnimasu;
+        const targetHref = isDh 
+          ? `#/donghua-detail/${animeId}` 
+          : isSamehadaku 
+            ? `#/anime/samehadaku/${animeId}` 
+            : isAnimasu
+              ? `#/anime/animasu/${animeId}`
+              : `#/anime/${animeId}`;
         const epsBadge = anime.episodes ? <div className="card-badge">{anime.episodes} Eps</div> : null;
         const scoreVal = typeof anime.score === 'object' ? anime.score.value : anime.score;
         const scoreBadge = scoreVal && scoreVal !== '0' && scoreVal !== '0.00' ? (
@@ -650,7 +707,7 @@ function AnimeGrid({ list, limit, toggleFavorite, isFavorite }) {
                   onClick={(e) => {
                     e.preventDefault();
                     e.stopPropagation();
-                    toggleFavorite(anime, isDh);
+                    toggleFavorite(anime, isDh, isSamehadaku, isAnimasu);
                   }}
                   title={favorited ? "Hapus dari Favorit" : "Tambah ke Favorit"}
                 >
@@ -662,7 +719,9 @@ function AnimeGrid({ list, limit, toggleFavorite, isFavorite }) {
               <div className="card-body">
                 <h3 className="card-title">{anime.title}</h3>
                 <div className="card-meta">
-                  <span className="card-episodes"><Play size={10} fill="currentColor" /> Nonton</span>
+                  <span className={`card-source-pill ${isSamehadaku ? 'samehadaku' : isAnimasu ? 'animasu' : isDh ? 'samehadaku' : 'otakudesu'}`}>
+                    {isSamehadaku ? 'Samehadaku' : isAnimasu ? 'Animasu' : isDh ? 'Donghua' : 'Otakudesu'}
+                  </span>
                   <span>{anime.latestReleaseDate || anime.lastReleaseDate || 'Sub Indo'}</span>
                 </div>
               </div>
@@ -755,11 +814,18 @@ function HomeView({ historyItems, clearHistory, triggerToast, toggleFavorite, is
     let active = true;
     const loadData = async () => {
       try {
-        const res = await fetchAPI('/home');
+        const res = await fetchAPI('/home', false);
         if (res.data && active) {
-          const ongoingList = res.data.ongoing.animeList || [];
+          const ongoingList = (res.data.ongoing.animeList || []).map(item => ({
+            ...item,
+            source: 'Otakudesu'
+          }));
+          const completedList = (res.data.completed.animeList || []).map(item => ({
+            ...item,
+            source: 'Otakudesu'
+          }));
           setOngoing(ongoingList);
-          setCompleted(res.data.completed.animeList || []);
+          setCompleted(completedList);
           setLoading(false);
 
           // Get detailed spotlight synopsis
@@ -768,7 +834,7 @@ function HomeView({ historyItems, clearHistory, triggerToast, toggleFavorite, is
             const randomShow = ongoingList[idx];
             const randomId = randomShow.animeId || randomShow.href.split('/').pop();
             try {
-              const detailRes = await fetchAPI(`/anime/${randomId}`);
+              const detailRes = await fetchAPI(`/anime/${randomId}`, false);
               if (detailRes.data && active) {
                 setSpotlight({
                   ...detailRes.data,
@@ -850,9 +916,14 @@ function HomeView({ historyItems, clearHistory, triggerToast, toggleFavorite, is
             {historyItems.map(item => {
               const epNum = extractEpisodeNumber(item.episodeTitle);
               const epText = isNaN(epNum) ? epNum : `Episode ${epNum}`;
+              const targetHref = item.isSamehadaku 
+                ? `#/episode/samehadaku/${item.episodeId}` 
+                : item.isAnimasu 
+                  ? `#/episode/animasu/${item.episodeId}` 
+                  : `#/episode/${item.episodeId}`;
               return (
                 <div key={item.animeId} className="anime-card">
-                  <a href={`#/episode/${item.episodeId}`}>
+                  <a href={targetHref}>
                     <div className="card-poster-wrapper">
                        <img className="card-poster" src={item.poster} alt={item.animeTitle} />
                        <div className="card-badge bg-cyan">Lanjut</div>
@@ -861,7 +932,9 @@ function HomeView({ historyItems, clearHistory, triggerToast, toggleFavorite, is
                     <div className="card-body">
                       <h3 className="card-title">{item.animeTitle}</h3>
                       <div className="card-meta">
-                        <span className="card-episodes"><Play size={10} fill="var(--cyan)" color="var(--cyan)" /> Putar</span>
+                        <span className={`card-source-pill ${item.isSamehadaku ? 'samehadaku' : item.isAnimasu ? 'animasu' : 'otakudesu'}`}>
+                          {item.isSamehadaku ? 'Samehadaku' : item.isAnimasu ? 'Animasu' : 'Otakudesu'}
+                        </span>
                         <span style={{ fontSize: '10px' }}>{new Date(item.timestamp).toLocaleDateString('id-ID')}</span>
                       </div>
                     </div>
@@ -912,7 +985,11 @@ function CatalogView({ type, page, toggleFavorite, isFavorite }) {
       try {
         const res = await fetchAPI(`${endpoint}?page=${page}`);
         if (res.data && active) {
-          setList(res.data.animeList || []);
+          const tagged = (res.data.animeList || []).map(item => ({
+            ...item,
+            source: 'Otakudesu'
+          }));
+          setList(tagged);
           setPagination(res.pagination || res.data.pagination || null);
           setLoading(false);
         }
@@ -958,7 +1035,7 @@ function CatalogView({ type, page, toggleFavorite, isFavorite }) {
 }
 
 // Detail View
-function DetailView({ animeId, triggerToast, saveToHistory, toggleFavorite, isFavorite }) {
+function DetailView({ animeId, triggerToast, saveToHistory, toggleFavorite, isFavorite, isSamehadaku = false, isAnimasu = false }) {
   const [detail, setDetail] = useState(null);
   const [loading, setLoading] = useState(true);
   const [sortAsc, setSortAsc] = useState(false);
@@ -968,10 +1045,37 @@ function DetailView({ animeId, triggerToast, saveToHistory, toggleFavorite, isFa
     setLoading(true);
     const loadDetails = async () => {
       try {
-        const res = await fetchAPI(`/anime/${animeId}`);
-        if (res.data && active) {
-          setDetail(res.data);
-          setLoading(false);
+        const sourceParam = isSamehadaku ? 'samehadaku' : isAnimasu ? 'animasu' : 'otakudesu';
+        const fetchUrl = isAnimasu ? `/detail/${animeId}` : `/anime/${animeId}`;
+        const res = await fetchAPI(fetchUrl, sourceParam);
+        if (active) {
+          if (isAnimasu && res.detail) {
+            const normalized = {
+              title: res.detail.title,
+              poster: res.detail.poster,
+              score: res.detail.rating,
+              japanese: res.detail.synonym,
+              synopsis: { paragraphs: [res.detail.synopsis] },
+              type: res.detail.type,
+              status: res.detail.status,
+              episodes: res.detail.episodes?.length,
+              duration: res.detail.duration,
+              studios: res.detail.studio,
+              producers: res.detail.author,
+              aired: res.detail.aired,
+              genreList: res.detail.genres?.map(g => ({ title: g.name, genreId: g.slug })),
+              episodeList: res.detail.episodes?.map(ep => ({
+                title: ep.name,
+                episodeId: ep.slug,
+                date: ''
+              }))
+            };
+            setDetail(normalized);
+            setLoading(false);
+          } else if (res.data) {
+            setDetail(res.data);
+            setLoading(false);
+          }
           window.scrollTo({ top: 0, behavior: 'smooth' });
         }
       } catch (err) {
@@ -984,7 +1088,7 @@ function DetailView({ animeId, triggerToast, saveToHistory, toggleFavorite, isFa
     };
     loadDetails();
     return () => { active = false; };
-  }, [animeId]);
+  }, [animeId, isSamehadaku, isAnimasu]);
 
   if (loading) {
     return (
@@ -1022,13 +1126,16 @@ function DetailView({ animeId, triggerToast, saveToHistory, toggleFavorite, isFa
             {detail.japanese && <h2 className="detail-japanese">{detail.japanese}</h2>}
             
             <div className="detail-meta-tags">
+              <span className={`meta-tag source-badge ${isSamehadaku ? 'samehadaku' : isAnimasu ? 'animasu' : 'otakudesu'}`} style={{ border: '1px solid' }}>
+                <Tv size={14} /> <span>{isSamehadaku ? 'Samehadaku' : isAnimasu ? 'Animasu' : 'Otakudesu'}</span>
+              </span>
               <span className="meta-tag"><Tv size={14} /> <span>{detail.type || '-'}</span></span>
               <span className="meta-tag"><Info size={14} /> <span>{detail.status || '-'}</span></span>
               <span className="meta-tag"><Film size={14} /> <span>{detail.episodes || '?'} Eps</span></span>
               <span className="meta-tag"><Clock size={14} /> <span>{detail.duration || '-'}</span></span>
               {toggleFavorite && isFavorite && (
                 <button 
-                  onClick={() => toggleFavorite(detail, false)} 
+                  onClick={() => toggleFavorite(detail, false, isSamehadaku, isAnimasu)} 
                   className={`meta-tag btn-favorite-toggle ${isFavorite(animeId) ? 'active' : ''}`}
                   style={{ 
                     cursor: 'pointer', 
@@ -1089,13 +1196,18 @@ function DetailView({ animeId, triggerToast, saveToHistory, toggleFavorite, isFa
             <div className="episodes-grid numeric-grid">
               {episodes.map(ep => {
                 const epNum = extractEpisodeNumber(ep.title);
+                const epTargetHref = isSamehadaku 
+                  ? `#/episode/samehadaku/${ep.episodeId}` 
+                  : isAnimasu 
+                    ? `#/episode/animasu/${ep.episodeId}` 
+                    : `#/episode/${ep.episodeId}`;
                 return (
                   <a 
                     key={ep.episodeId} 
-                    href={`#/episode/${ep.episodeId}`} 
+                    href={epTargetHref} 
                     className="episode-card numeric-card"
                     title={`${ep.title} (${ep.date || 'Rilis'})`}
-                    onClick={() => saveToHistory(animeId, detail.title || detail.english || detail.japanese, detail.poster, ep.episodeId, ep.title)}
+                    onClick={() => saveToHistory(animeId, detail.title || detail.english || detail.japanese, detail.poster, ep.episodeId, ep.title, isSamehadaku, isAnimasu)}
                   >
                     <span>{epNum}</span>
                   </a>
@@ -1120,7 +1232,7 @@ function DetailView({ animeId, triggerToast, saveToHistory, toggleFavorite, isFa
 }
 
 // Stream View
-function StreamView({ episodeId, triggerToast, saveToHistory }) {
+function StreamView({ episodeId, triggerToast, saveToHistory, isSamehadaku = false, isAnimasu = false }) {
   const [stream, setStream] = useState(null);
   const [loading, setLoading] = useState(true);
   const [playerUrl, setPlayerUrl] = useState('');
@@ -1141,38 +1253,140 @@ function StreamView({ episodeId, triggerToast, saveToHistory }) {
     
     const loadStreamData = async () => {
       try {
-        const res = await fetchAPI(`/episode/${episodeId}`);
-        if (!active) return;
-        
-        const data = res.data;
-        setStream(data);
-        setLoading(false);
-        if (data.defaultStreamingUrl) {
-          setPlayerUrl(data.defaultStreamingUrl);
-        }
+        if (isAnimasu) {
+          const res = await fetchAPI(`/episode/${episodeId}`, 'animasu');
+          if (!active) return;
+          
+          const streams = res.streams || [];
+          
+          const tempStream = {
+            title: res.title || `Episode ${extractEpisodeNumber(episodeId)}`,
+            defaultStreamingUrl: streams.length > 0 ? streams[0].url : '',
+            hasPrevEpisode: false,
+            hasNextEpisode: false,
+            prevEpisode: null,
+            nextEpisode: null,
+            downloadUrl: { qualities: [] },
+            info: {
+              duration: '-',
+              credit: 'Animasu',
+              genreList: []
+            },
+            animeId: getAnimasuSeriesSlug(episodeId)
+          };
 
-        // Handle quality list
-        if (data.server && data.server.qualities) {
-          const activeQualities = data.server.qualities.filter(q => q.serverList && q.serverList.length > 0);
-          if (activeQualities.length > 0) {
-            setActiveQuality(activeQualities[0].title);
-            setServerList(activeQualities[0].serverList);
-            if (activeQualities[0].serverList.length > 0) {
-              setActiveServer(activeQualities[0].serverList[0].serverId);
-            }
+          setStream(tempStream);
+          setLoading(false);
+
+          if (streams.length > 0) {
+            setPlayerUrl(streams[0].url);
+            setActiveQuality(streams[0].name || 'Def');
+            
+            const servers = streams.map(s => ({
+              serverId: s.url,
+              title: s.name,
+              url: s.url
+            }));
+            setServerList(servers);
+            setActiveServer(streams[0].url);
           }
-        }
 
-        // Fetch mini details for sidebar & watch history saving
-        if (data.animeId) {
+          // Fetch parent details
+          const extractedAnimeId = tempStream.animeId;
           try {
-            const detailRes = await fetchAPI(`/anime/${data.animeId}`);
-            if (detailRes.data && active) {
-              setAnimeDetails(detailRes.data);
-              saveToHistory(data.animeId, detailRes.data.title || detailRes.data.english || detailRes.data.japanese, detailRes.data.poster, episodeId, data.title);
+            const detailRes = await fetchAPI(`/detail/${extractedAnimeId}`, 'animasu');
+            if (detailRes.detail && active) {
+              const details = {
+                title: detailRes.detail.title,
+                poster: detailRes.detail.poster,
+                score: detailRes.detail.rating,
+                status: detailRes.detail.status,
+                synopsis: detailRes.detail.synopsis,
+                episodes: detailRes.detail.episodes?.length,
+                episodeList: detailRes.detail.episodes?.map(ep => ({
+                  title: ep.name,
+                  episodeId: ep.slug,
+                  date: ''
+                })) || []
+              };
+              setAnimeDetails(details);
+              
+              saveToHistory(
+                extractedAnimeId,
+                details.title,
+                details.poster,
+                episodeId,
+                res.title || `Episode ${extractEpisodeNumber(episodeId)}`,
+                false,
+                true // isAnimasu
+              );
+
+              // Calculate next and prev episodes
+              const episodes = details.episodeList; // Descending order
+              const currentIndex = episodes.findIndex(ep => ep.episodeId === episodeId);
+              if (currentIndex !== -1) {
+                if (currentIndex > 0) {
+                  tempStream.hasNextEpisode = true;
+                  tempStream.nextEpisode = {
+                    episodeId: episodes[currentIndex - 1].episodeId,
+                    title: episodes[currentIndex - 1].title
+                  };
+                }
+                if (currentIndex < episodes.length - 1) {
+                  tempStream.hasPrevEpisode = true;
+                  tempStream.prevEpisode = {
+                    episodeId: episodes[currentIndex + 1].episodeId,
+                    title: episodes[currentIndex + 1].title
+                  };
+                }
+                setStream({ ...tempStream });
+              }
+
+              if (Array.isArray(detailRes.detail.genres)) {
+                tempStream.info.genreList = detailRes.detail.genres.map(g => ({
+                  title: g.name,
+                  genreId: g.slug
+                }));
+                setStream({ ...tempStream });
+              }
             }
           } catch (e) {
-            console.warn('Mini info fetch failed:', e.message);
+            console.warn('Animasu parent detail fetch failed:', e.message);
+          }
+        } else {
+          const res = await fetchAPI(`/episode/${episodeId}`, isSamehadaku);
+          if (!active) return;
+          
+          const data = res.data;
+          setStream(data);
+          setLoading(false);
+          if (data.defaultStreamingUrl) {
+            setPlayerUrl(data.defaultStreamingUrl);
+          }
+
+          // Handle quality list
+          if (data.server && data.server.qualities) {
+            const activeQualities = data.server.qualities.filter(q => q.serverList && q.serverList.length > 0);
+            if (activeQualities.length > 0) {
+              setActiveQuality(activeQualities[0].title);
+              setServerList(activeQualities[0].serverList);
+              if (activeQualities[0].serverList.length > 0) {
+                setActiveServer(activeQualities[0].serverList[0].serverId);
+              }
+            }
+          }
+
+          // Fetch mini details for sidebar & watch history saving
+          if (data.animeId) {
+            try {
+              const detailRes = await fetchAPI(`/anime/${data.animeId}`, isSamehadaku);
+              if (detailRes.data && active) {
+                setAnimeDetails(detailRes.data);
+                saveToHistory(data.animeId, detailRes.data.title || detailRes.data.english || detailRes.data.japanese, detailRes.data.poster, episodeId, data.title, isSamehadaku);
+              }
+            } catch (e) {
+              console.warn('Mini info fetch failed:', e.message);
+            }
           }
         }
 
@@ -1195,7 +1409,7 @@ function StreamView({ episodeId, triggerToast, saveToHistory }) {
     };
     loadStreamData();
     return () => { active = false; };
-  }, [episodeId]);
+  }, [episodeId, isSamehadaku, isAnimasu]);
 
   const switchQuality = (q) => {
     setActiveQuality(q.title);
@@ -1209,8 +1423,12 @@ function StreamView({ episodeId, triggerToast, saveToHistory }) {
     setActiveServer(server.serverId);
     setPlayerUrl('about:blank');
     triggerToast(`Menghubungkan ke server ${server.title}...`);
+    if (isAnimasu) {
+      setPlayerUrl(server.url);
+      return;
+    }
     try {
-      const res = await fetchAPI(`/server/${server.serverId}`);
+      const res = await fetchAPI(`/server/${server.serverId}`, isSamehadaku);
       if (res.data && res.data.url) {
         setPlayerUrl(res.data.url);
       } else {
@@ -1257,7 +1475,7 @@ function StreamView({ episodeId, triggerToast, saveToHistory }) {
             
             <div className="video-controls">
               <a 
-                href={stream.hasPrevEpisode ? `#/episode/${stream.prevEpisode.episodeId}` : undefined} 
+                href={stream.hasPrevEpisode ? (isSamehadaku ? `#/episode/samehadaku/${stream.prevEpisode.episodeId}` : isAnimasu ? `#/episode/animasu/${stream.prevEpisode.episodeId}` : `#/episode/${stream.prevEpisode.episodeId}`) : undefined} 
                 className={`btn-control ${!stream.hasPrevEpisode ? 'disabled' : ''}`}
               >
                 <SkipBack size={14} /> Episode Seb
@@ -1280,7 +1498,7 @@ function StreamView({ episodeId, triggerToast, saveToHistory }) {
               </div>
               
               <a 
-                href={stream.hasNextEpisode ? `#/episode/${stream.nextEpisode.episodeId}` : undefined} 
+                href={stream.hasNextEpisode ? (isSamehadaku ? `#/episode/samehadaku/${stream.nextEpisode.episodeId}` : isAnimasu ? `#/episode/animasu/${stream.nextEpisode.episodeId}` : `#/episode/${stream.nextEpisode.episodeId}`) : undefined} 
                 className={`btn-control ${!stream.hasNextEpisode ? 'disabled' : ''}`}
               >
                 Episode Sel <SkipForward size={14} />
@@ -1363,7 +1581,7 @@ function StreamView({ episodeId, triggerToast, saveToHistory }) {
                   <div>Score: <span style={{ color: 'var(--star)' }}>★ {animeDetails.score || '-'}</span></div>
                   <div>Status: {animeDetails.status || '-'}</div>
                 </div>
-                <a href={`#/anime/${stream.animeId}`} className="anime-mini-btn">Detail Utama</a>
+                <a href={isSamehadaku ? `#/anime/samehadaku/${stream.animeId}` : isAnimasu ? `#/anime/animasu/${stream.animeId}` : `#/anime/${stream.animeId}`} className="anime-mini-btn">Detail Utama</a>
               </div>
             </div>
           )}
@@ -1397,11 +1615,16 @@ function StreamView({ episodeId, triggerToast, saveToHistory }) {
               {stream.info?.episodeList && stream.info.episodeList.map(ep => {
                 const epNum = extractEpisodeNumber(ep.title);
                 const isActive = ep.episodeId === episodeId;
+                const epTargetHref = isSamehadaku 
+                  ? `#/episode/samehadaku/${ep.episodeId}` 
+                  : isAnimasu
+                    ? `#/episode/animasu/${ep.episodeId}`
+                    : `#/episode/${ep.episodeId}`;
                 return (
                   <a
                     key={ep.episodeId}
                     ref={isActive ? activeEpisodeRef : null}
-                    href={`#/episode/${ep.episodeId}`}
+                    href={epTargetHref}
                     className={`stream-ep-item ${isActive ? 'active' : ''}`}
                     title={ep.title}
                   >
@@ -2076,15 +2299,48 @@ function ResultsView({ mode, query, genreId, page = 1, toggleFavorite, isFavorit
     const loadResults = async () => {
       if (mode === 'search') {
         try {
-          const [animeRes, donghuaRes] = await Promise.allSettled([
-            fetchAPI(`/search/${query}`),
+          const [otakuRes, samehadakuRes, animasuRes, donghuaRes] = await Promise.allSettled([
+            fetchAPI(`/search/${query}`, false),
+            fetchAPI(`/search?q=${query}`, true),
+            fetchAPI(`/search/${query}`, 'animasu'),
             fetchDonghuaAPI(`/donghua/search/${query}`)
           ]);
 
           let mergedList = [];
 
-          if (animeRes.status === 'fulfilled' && animeRes.value?.data?.animeList) {
-            mergedList = [...animeRes.value.data.animeList];
+          if (otakuRes.status === 'fulfilled' && otakuRes.value?.data?.animeList) {
+            const list = otakuRes.value.data.animeList.map(item => ({
+              ...item,
+              source: 'Otakudesu',
+              isSamehadaku: false,
+              isAnimasu: false
+            }));
+            mergedList = [...mergedList, ...list];
+          }
+
+          if (samehadakuRes.status === 'fulfilled' && samehadakuRes.value?.data?.animeList) {
+            const list = samehadakuRes.value.data.animeList.map(item => ({
+              ...item,
+              source: 'Samehadaku',
+              isSamehadaku: true,
+              isAnimasu: false
+            }));
+            mergedList = [...mergedList, ...list];
+          }
+
+          if (animasuRes.status === 'fulfilled' && animasuRes.value?.animes) {
+            const list = animasuRes.value.animes.map(item => ({
+              animeId: item.slug || '',
+              title: item.title,
+              poster: item.poster,
+              score: item.rating || '',
+              status: item.status_or_day || '',
+              type: item.type || 'TV',
+              source: 'Animasu',
+              isAnimasu: true,
+              isSamehadaku: false
+            }));
+            mergedList = [...mergedList, ...list];
           }
 
           if (donghuaRes.status === 'fulfilled' && donghuaRes.value) {
@@ -2094,7 +2350,8 @@ function ResultsView({ mode, query, genreId, page = 1, toggleFavorite, isFavorit
               const normalizedDh = dhList.map(item => ({
                 ...item,
                 animeId: item.slug || '',
-                isDonghua: true
+                isDonghua: true,
+                source: 'Donghua'
               }));
               mergedList = [...normalizedDh, ...mergedList];
             }
@@ -2111,9 +2368,13 @@ function ResultsView({ mode, query, genreId, page = 1, toggleFavorite, isFavorit
       } else {
         const endpoint = `/genre/${genreId}?page=${page}`;
         try {
-          const res = await fetchAPI(endpoint);
+          const res = await fetchAPI(endpoint, false);
           if (res.data && active) {
-            setList(res.data.animeList || []);
+            const tagged = (res.data.animeList || []).map(item => ({
+              ...item,
+              source: 'Otakudesu'
+            }));
+            setList(tagged);
             setPagination(res.pagination || res.data.pagination || null);
             setLoading(false);
           }
@@ -2173,7 +2434,10 @@ function FavoritesView({ favorites, toggleFavorite, isFavorite }) {
     title: x.title,
     poster: x.poster,
     status: x.status,
-    type: x.type
+    type: x.type,
+    isSamehadaku: x.isSamehadaku,
+    isAnimasu: x.isAnimasu,
+    source: x.isAnimasu ? 'Animasu' : (x.isSamehadaku ? 'Samehadaku' : 'Otakudesu')
   }));
 
   const normDonghuaList = donghuaFavorites.map(x => ({
