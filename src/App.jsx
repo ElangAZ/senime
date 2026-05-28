@@ -1360,7 +1360,10 @@ function StreamView({ episodeId, triggerToast, saveToHistory, isSamehadaku = fal
           const data = res.data;
           setStream(data);
           setLoading(false);
-          if (data.defaultStreamingUrl) {
+          
+          let initialPlayerUrl = '';
+          if (data.defaultStreamingUrl && data.defaultStreamingUrl !== 'No iframe found') {
+            initialPlayerUrl = data.defaultStreamingUrl;
             setPlayerUrl(data.defaultStreamingUrl);
           }
 
@@ -1371,7 +1374,21 @@ function StreamView({ episodeId, triggerToast, saveToHistory, isSamehadaku = fal
               setActiveQuality(activeQualities[0].title);
               setServerList(activeQualities[0].serverList);
               if (activeQualities[0].serverList.length > 0) {
-                setActiveServer(activeQualities[0].serverList[0].serverId);
+                const firstServer = activeQualities[0].serverList[0];
+                setActiveServer(firstServer.serverId);
+                
+                // CRITICAL HOTFIX: If defaultStreamingUrl is missing or says "No iframe found", auto load first server!
+                if (!initialPlayerUrl) {
+                  try {
+                    console.log(`Auto-switching to first server: ${firstServer.title}`);
+                    const serverRes = await fetchAPI(`/server/${firstServer.serverId}`, isSamehadaku);
+                    if (serverRes.data && serverRes.data.url && active) {
+                      setPlayerUrl(serverRes.data.url);
+                    }
+                  } catch (e) {
+                    console.warn('Auto server fetch failed:', e.message);
+                  }
+                }
               }
             }
           }
