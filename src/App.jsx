@@ -1209,7 +1209,7 @@ function DetailView({ animeId, triggerToast, saveToHistory, toggleFavorite, isFa
                     title={`${ep.title} (${ep.date || 'Rilis'})`}
                     onClick={() => saveToHistory(animeId, detail.title || detail.english || detail.japanese, detail.poster, ep.episodeId, ep.title, isSamehadaku, isAnimasu)}
                   >
-                    <span>{epNum}</span>
+                    <span>{epNum || 'Ep'}</span>
                   </a>
                 );
               })}
@@ -1599,7 +1599,7 @@ function StreamView({ episodeId, triggerToast, saveToHistory, isSamehadaku = fal
                     className={`quality-btn ${activeQuality === q.title ? 'active' : ''}`}
                     onClick={() => switchQuality(q)}
                   >
-                    {q.title}
+                    {q.title === 'unknown' ? 'Default' : q.title}
                   </button>
                 ))}
               </div>
@@ -1612,7 +1612,7 @@ function StreamView({ episodeId, triggerToast, saveToHistory, isSamehadaku = fal
               <h3><List size={16} /> Semua Episode</h3>
             </div>
             <div className="sidebar-episode-scroll">
-              {stream.info?.episodeList && stream.info.episodeList.map(ep => {
+              {(animeDetails?.episodeList || stream.info?.episodeList) && (animeDetails?.episodeList || stream.info?.episodeList).map(ep => {
                 const epNum = extractEpisodeNumber(ep.title);
                 const isActive = ep.episodeId === episodeId;
                 const epTargetHref = isSamehadaku 
@@ -1628,7 +1628,7 @@ function StreamView({ episodeId, triggerToast, saveToHistory, isSamehadaku = fal
                     className={`stream-ep-item ${isActive ? 'active' : ''}`}
                     title={ep.title}
                   >
-                    {isNaN(epNum) ? epNum : `Episode ${epNum}`}
+                    {!epNum ? ep.title : (isNaN(epNum) ? epNum : `Episode ${epNum}`)}
                   </a>
                 );
               })}
@@ -2299,11 +2299,13 @@ function ResultsView({ mode, query, genreId, page = 1, toggleFavorite, isFavorit
     const loadResults = async () => {
       if (mode === 'search') {
         try {
+          const decodedQuery = decodeURIComponent(query);
+          const q = encodeURIComponent(decodedQuery);
           const [otakuRes, samehadakuRes, animasuRes, donghuaRes] = await Promise.allSettled([
-            fetchAPI(`/search/${query}`, false),
-            fetchAPI(`/search?q=${query}`, true),
-            fetchAPI(`/search/${query}`, 'animasu'),
-            fetchDonghuaAPI(`/donghua/search/${query}`)
+            fetchAPI(`/search/${q}`, false),
+            fetchAPI(`/search?q=${q}`, true),
+            fetchAPI(`/search/${q}`, 'animasu'),
+            fetchDonghuaAPI(`/donghua/search/${q}`)
           ]);
 
           let mergedList = [];
