@@ -1252,7 +1252,7 @@ function StreamView({ episodeId, triggerToast, saveToHistory, isSamehadaku = fal
     if (resolvedServers.length > 1) {
       iframeTimeoutRef.current = setTimeout(() => {
         handleIframeTimeout(targetServerId, resolvedServers);
-      }, 9500); // 9.5 seconds limit
+      }, 5000); // 5 seconds limit
     }
   };
 
