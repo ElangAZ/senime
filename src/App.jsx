@@ -1578,7 +1578,7 @@ function StreamView({ episodeId, triggerToast, saveToHistory, isSamehadaku = fal
               <div className="anime-mini-details">
                 <h4 className="anime-mini-title">{animeDetails.title}</h4>
                 <div className="anime-mini-meta">
-                  <div>Score: <span style={{ color: 'var(--star)' }}>★ {animeDetails.score || '-'}</span></div>
+                  <div>Score: <span style={{ color: 'var(--star)' }}>★ {typeof animeDetails.score === 'object' ? animeDetails.score.value : (animeDetails.score || '-')}</span></div>
                   <div>Status: {animeDetails.status || '-'}</div>
                 </div>
                 <a href={isSamehadaku ? `#/anime/samehadaku/${stream.animeId}` : isAnimasu ? `#/anime/animasu/${stream.animeId}` : `#/anime/${stream.animeId}`} className="anime-mini-btn">Detail Utama</a>
