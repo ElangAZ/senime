@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { 
-  Play, Home, Calendar, CheckSquare, Hash, ChevronDown, Search,
+  Play, Home, Calendar, CheckSquare, Hash, ChevronDown, ChevronLeft, ChevronRight, Search,
   Trash2, Flame, Sparkles, ArrowRight, Tv, Info, Film, Clock, 
   SortAsc, ThumbsUp, SkipBack, SkipForward, Download, List, Star, 
   User, Video, X, Loader2, Square, AlertCircle, CheckCircle2,
-  History, ArrowUpDown, PlaySquare
+  History, ArrowUpDown, PlaySquare, Heart
 } from 'lucide-react';
 
 // Error Boundary to prevent full black screen on render crash
@@ -42,6 +42,8 @@ class ErrorBoundary extends React.Component {
     return this.props.children;
   }
 }
+
+export { ErrorBoundary };
 
 const API_BASE = 'https://www.sankavollerei.com/anime';
 
@@ -130,6 +132,86 @@ async function fetchAPI(endpoint) {
   throw lastError || new Error('Failed to fetch from all endpoints');
 }
 
+// Donghua-specific raw API fetch (no standard status wrapper)
+async function fetchDonghuaAPI(endpoint) {
+  const url = `${API_BASE}${endpoint}`;
+  const strategies = [];
+  if (window.location.protocol.startsWith('http')) {
+    strategies.push(`/api${endpoint}`);
+  }
+  strategies.push(
+    `https://corsproxy.io/?${encodeURIComponent(url)}`,
+    `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`
+  );
+  for (const reqUrl of strategies) {
+    try {
+      const ctrl = new AbortController();
+      const tid = setTimeout(() => ctrl.abort(), 12000); // 12s timeout per strategy
+      const resp = await fetch(reqUrl, { signal: ctrl.signal });
+      clearTimeout(tid);
+      if (!resp.ok) continue;
+
+      // Read as text first to validate it's actually JSON (not an HTML error page)
+      const text = await resp.text();
+      const trimmed = text.trim();
+      if (!trimmed.startsWith('{') && !trimmed.startsWith('[')) {
+        console.warn('fetchDonghuaAPI: not JSON from', reqUrl);
+        continue;
+      }
+
+      const json = JSON.parse(trimmed);
+      // Validate it has at least one expected field from the detail or home API
+      if (json && typeof json === 'object' && !Array.isArray(json) &&
+          (json.title || json.episodes_list || json.latest_release || json.status || json.data || json.creator)) {
+        return json;
+      }
+    } catch (e) {
+      console.warn('fetchDonghuaAPI failed:', reqUrl, e.message);
+    }
+  }
+  throw new Error('Failed to fetch donghua data');
+}
+
+// Extract the series detail slug from a donghua item (handles both detail and episode hrefs)
+function getSeriesSlug(item) {
+  const href = item.href || '';
+  let rawSlug = item.slug || '';
+  
+  if (!rawSlug && href) {
+    const parts = href.split('/').filter(Boolean);
+    rawSlug = parts[parts.length - 1] || '';
+  }
+
+  // Trim leading/trailing slashes and spaces from rawSlug and href
+  const cleanHref = href.replace(/^\/+|\/+$/g, '').trim();
+  let cleanSlug = rawSlug.replace(/^\/+|\/+$/g, '').trim();
+
+  // If href explicitly points to a detail page, extract the slug from it
+  if (cleanHref.includes('donghua/detail/')) {
+    const slugFromDetail = cleanHref.split('donghua/detail/').pop().split('?')[0];
+    if (slugFromDetail) {
+      cleanSlug = slugFromDetail.replace(/^\/+|\/+$/g, '').trim();
+    }
+  }
+
+  // For episode hrefs, prefer the slug from the URL
+  if (cleanHref.includes('donghua/episode/')) {
+    const slugFromEpisode = cleanHref.split('donghua/episode/').pop().split('?')[0];
+    if (slugFromEpisode) {
+      cleanSlug = slugFromEpisode.replace(/^\/+|\/+$/g, '').trim();
+    }
+  }
+
+  // ALWAYS strip episode suffix
+  // Handles cases like "little-fairy-yao-episode-03-subtitle-indonesia" or "little-fairy-yao-episode-143"
+  const stripped = cleanSlug
+    .replace(/-episode-[a-zA-Z0-9_-]*/, '')
+    .replace(/-ep-?[0-9][a-zA-Z0-9_-]*/, '')
+    .replace(/-subtitle-[a-zA-Z0-9_-]*/, '');
+
+  return (stripped || cleanSlug || rawSlug).replace(/^\/+|\/+$/g, '').trim();
+}
+
 // Helper to extract just the episode number from an episode title
 function extractEpisodeNumber(title) {
   if (!title) return '';
@@ -152,6 +234,9 @@ export default function App() {
   const [mobileGenresOpen, setMobileGenresOpen] = useState(false);
   const [historyItems, setHistoryItems] = useState([]);
   const [toast, setToast] = useState(null);
+  const [favorites, setFavorites] = useState(() => {
+    return JSON.parse(localStorage.getItem('nekowatch_favorites')) || [];
+  });
   
   // Ref for autocomplete suggestions close on click outside
   const searchInputRef = useRef(null);
@@ -195,6 +280,36 @@ export default function App() {
     setTimeout(() => setToast(null), 3000);
   };
 
+  const toggleFavorite = (item, isDonghua = false) => {
+    const itemId = item.animeId || item.slug || item.href?.split('/').pop() || '';
+    if (!itemId) return;
+
+    setFavorites(prev => {
+      const exists = prev.some(x => x.id === itemId);
+      let updated;
+      if (exists) {
+        updated = prev.filter(x => x.id !== itemId);
+        triggerToast(`Dihapus dari Favorit.`, 'success');
+      } else {
+        updated = [...prev, {
+          id: itemId,
+          title: item.title,
+          poster: item.poster,
+          status: item.status || 'Completed',
+          type: item.type || (isDonghua ? 'Donghua' : 'TV'),
+          isDonghua: isDonghua
+        }];
+        triggerToast(`Ditambahkan ke Favorit!`, 'success');
+      }
+      localStorage.setItem('nekowatch_favorites', JSON.stringify(updated));
+      return updated;
+    });
+  };
+
+  const isFavorite = (itemId) => {
+    return favorites.some(x => x.id === itemId);
+  };
+
   const handleSearchSubmit = (e) => {
     e.preventDefault();
     if (searchQuery.trim()) {
@@ -212,12 +327,32 @@ export default function App() {
 
     const timer = setTimeout(async () => {
       try {
-        const res = await fetchAPI(`/search/${encodeURIComponent(searchQuery.trim())}`);
-        if (res.data && res.data.animeList) {
-          setSuggestions(res.data.animeList.slice(0, 5));
-        } else {
-          setSuggestions([]);
+        const q = encodeURIComponent(searchQuery.trim());
+        const [animeRes, donghuaRes] = await Promise.allSettled([
+          fetchAPI(`/search/${q}`),
+          fetchDonghuaAPI(`/donghua/search/${q}`)
+        ]);
+
+        let merged = [];
+
+        if (animeRes.status === 'fulfilled' && animeRes.value?.data?.animeList) {
+          merged = [...animeRes.value.data.animeList.slice(0, 4)];
         }
+
+        if (donghuaRes.status === 'fulfilled' && donghuaRes.value) {
+          const dhVal = donghuaRes.value;
+          const dhList = dhVal.data || dhVal || [];
+          if (Array.isArray(dhList)) {
+            const normalized = dhList.slice(0, 4).map(item => ({
+              ...item,
+              animeId: item.slug || '',
+              isDonghua: true
+            }));
+            merged = [...normalized, ...merged];
+          }
+        }
+
+        setSuggestions(merged.slice(0, 6));
       } catch (err) {
         console.warn('Autocomplete error:', err.message);
       }
@@ -251,20 +386,38 @@ export default function App() {
 
   // Parse Routes
   const renderContent = () => {
-    if (route === '#/' || route === '') {
-      return <HomeView historyItems={historyItems} clearHistory={clearHistory} triggerToast={triggerToast} />;
+    if (route.startsWith('#/favorites')) {
+      return <FavoritesView favorites={favorites} toggleFavorite={toggleFavorite} isFavorite={isFavorite} />;
+    } else if (route === '#/' || route === '') {
+      return <HomeView historyItems={historyItems} clearHistory={clearHistory} triggerToast={triggerToast} toggleFavorite={toggleFavorite} isFavorite={isFavorite} />;
     } else if (route.startsWith('#/ongoing')) {
       const parts = route.split('/');
       const page = parts[2] ? parseInt(parts[2]) : 1;
-      return <CatalogView type="ongoing" page={page} />;
+      return <CatalogView type="ongoing" page={page} toggleFavorite={toggleFavorite} isFavorite={isFavorite} />;
     } else if (route.startsWith('#/completed')) {
       const parts = route.split('/');
       const page = parts[2] ? parseInt(parts[2]) : 1;
-      return <CatalogView type="completed" page={page} />;
+      return <CatalogView type="completed" page={page} toggleFavorite={toggleFavorite} isFavorite={isFavorite} />;
+    } else if (route.startsWith('#/donghua-episode/')) {
+      const parts = route.split('/');
+      const episodeSlug = parts[2];
+      return <DonghuaStreamView episodeSlug={episodeSlug} triggerToast={triggerToast} saveToHistory={saveToHistory} />;
+    } else if (route.startsWith('#/donghua-detail/')) {
+      const parts = route.split('/');
+      const slug = parts[2];
+      return (
+        <section className="app-view active" style={{ display: 'flex', justifyContent: 'center', minHeight: '80vh', alignItems: 'center' }}>
+          <DonghuaDetailModal item={{ slug: slug }} onClose={() => window.history.back()} toggleFavorite={toggleFavorite} isFavorite={isFavorite} />
+        </section>
+      );
+    } else if (route.startsWith('#/donghua')) {
+      const parts = route.split('/');
+      const page = parts[2] ? parseInt(parts[2]) : 1;
+      return <DonghuaView page={page} triggerToast={triggerToast} toggleFavorite={toggleFavorite} isFavorite={isFavorite} />;
     } else if (route.startsWith('#/anime/')) {
       const parts = route.split('/');
       const animeId = parts[2];
-      return <DetailView animeId={animeId} triggerToast={triggerToast} saveToHistory={saveToHistory} />;
+      return <DetailView animeId={animeId} triggerToast={triggerToast} saveToHistory={saveToHistory} toggleFavorite={toggleFavorite} isFavorite={isFavorite} />;
     } else if (route.startsWith('#/episode/')) {
       const parts = route.split('/');
       const episodeId = parts[2];
@@ -272,14 +425,14 @@ export default function App() {
     } else if (route.startsWith('#/search/')) {
       const parts = route.split('/');
       const query = parts[2];
-      return <ResultsView mode="search" query={query} />;
+      return <ResultsView mode="search" query={query} toggleFavorite={toggleFavorite} isFavorite={isFavorite} />;
     } else if (route.startsWith('#/genre/')) {
       const parts = route.split('/');
       const genreId = parts[2];
       const page = parts[3] ? parseInt(parts[3]) : 1;
-      return <ResultsView mode="genre" genreId={genreId} page={page} />;
+      return <ResultsView mode="genre" genreId={genreId} page={page} toggleFavorite={toggleFavorite} isFavorite={isFavorite} />;
     } else {
-      return <HomeView historyItems={historyItems} clearHistory={clearHistory} triggerToast={triggerToast} />;
+      return <HomeView historyItems={historyItems} clearHistory={clearHistory} triggerToast={triggerToast} toggleFavorite={toggleFavorite} isFavorite={isFavorite} />;
     }
   };
 
@@ -290,19 +443,17 @@ export default function App() {
         <div className="header-container">
           <a href="#/" className="logo">
             <Play className="logo-icon" fill="currentColor" />
-            <span className="logo-text">Neko<span>Watch</span></span>
+            <span className="logo-text">Se<span>nime</span></span>
           </a>
           
           <nav className="desktop-nav">
             <a href="#/" className={`nav-link ${(route === '#/' || route === '') ? 'active' : ''}`}>
               <Home size={16} /> Home
             </a>
-            <a href="#/ongoing" className={`nav-link ${route.startsWith('#/ongoing') ? 'active' : ''}`}>
-              <Calendar size={16} /> Ongoing
+            <a href="#/favorites" className={`nav-link ${route.startsWith('#/favorites') ? 'active' : ''}`}>
+              <Heart size={16} /> Favorite
             </a>
-            <a href="#/completed" className={`nav-link ${route.startsWith('#/completed') ? 'active' : ''}`}>
-              <CheckSquare size={16} /> Completed
-            </a>
+
             <div className="genre-dropdown">
               <button className="nav-link dropdown-trigger">
                 <Hash size={16} /> Genre <ChevronDown size={14} className="chevron" />
@@ -313,6 +464,9 @@ export default function App() {
                 ))}
               </div>
             </div>
+            <a href="#/donghua" className={`nav-link ${route.startsWith('#/donghua') ? 'active' : ''}`}>
+              <Film size={16} /> Donghua
+            </a>
           </nav>
 
           <div className="search-box">
@@ -321,7 +475,7 @@ export default function App() {
                 id="search-input"
                 ref={searchInputRef}
                 type="text" 
-                placeholder="Cari anime kesukaanmu..." 
+                placeholder={route.startsWith('#/donghua') ? "Cari donghua..." : "Cari anime..."}
                 autoComplete="off"
                 value={searchQuery}
                 onChange={(e) => {
@@ -344,7 +498,8 @@ export default function App() {
                       onClick={() => {
                         setShowSuggestions(false);
                         setSearchQuery('');
-                        window.location.hash = `#/anime/${animeId}`;
+                        const isDh = anime.type === 'Donghua' || anime.isDonghua || anime.href?.includes('/donghua/');
+                        window.location.hash = isDh ? `#/donghua-detail/${animeId}` : `#/anime/${animeId}`;
                       }}
                     >
                       <img className="suggestion-poster" src={anime.poster} alt={anime.title} />
@@ -367,18 +522,18 @@ export default function App() {
       </main>
 
       {/* Mobile Bottom Navigation */}
-      <nav className="mobile-nav">
+      <nav className="mobile-nav" style={{ justifyContent: 'space-around' }}>
         <a href="#/" className={`mobile-nav-item ${(route === '#/' || route === '') ? 'active' : ''}`}>
           <Home size={20} />
           <span>Home</span>
         </a>
-        <a href="#/ongoing" className={`mobile-nav-item ${route.startsWith('#/ongoing') ? 'active' : ''}`}>
-          <Calendar size={20} />
-          <span>Ongoing</span>
+        <a href="#/favorites" className={`mobile-nav-item ${route.startsWith('#/favorites') ? 'active' : ''}`}>
+          <Heart size={20} />
+          <span>Favorite</span>
         </a>
-        <a href="#/completed" className={`mobile-nav-item ${route.startsWith('#/completed') ? 'active' : ''}`}>
-          <CheckSquare size={20} />
-          <span>Completed</span>
+        <a href="#/donghua" className={`mobile-nav-item ${route.startsWith('#/donghua') ? 'active' : ''}`}>
+          <Film size={20} />
+          <span>Donghua</span>
         </a>
         <button className="mobile-nav-item" onClick={() => setMobileGenresOpen(true)}>
           <Hash size={20} />
@@ -417,7 +572,7 @@ export default function App() {
 
       {/* Footer */}
       <footer className="main-footer">
-        <p>&copy; 2026 NekoWatch. Dibuat dengan cinta untuk para Wibu. API didukung oleh Sankavollerei.</p>
+        <p>&copy; 2026 NekoWatch. Dibuat oleh Senux. API didukung oleh Sankavollerei.</p>
       </footer>
     </>
   );
@@ -426,7 +581,7 @@ export default function App() {
 // ------------------------- VIEWS & COMPONENTS -------------------------
 
 // Anime Card Grid Component
-function AnimeGrid({ list, limit }) {
+function AnimeGrid({ list, limit, toggleFavorite, isFavorite }) {
   if (!list || list.length === 0) {
     return <div className="no-data">Tidak ada anime yang ditemukan.</div>;
   }
@@ -434,22 +589,40 @@ function AnimeGrid({ list, limit }) {
   return (
     <div className="anime-grid">
       {items.map(anime => {
-        const animeId = anime.animeId || anime.href.split('/').pop();
+        const animeId = anime.animeId || anime.href?.split('/').pop() || '';
+        const isDh = anime.type === 'Donghua' || anime.isDonghua || anime.href?.includes('/donghua/');
+        const targetHref = isDh ? `#/donghua-detail/${animeId}` : `#/anime/${animeId}`;
         const epsBadge = anime.episodes ? <div className="card-badge">{anime.episodes} Eps</div> : null;
         const scoreBadge = anime.score && anime.score !== '0' && anime.score !== '0.00' ? (
           <div className="card-score"><Star size={10} fill="var(--star)" color="var(--star)" /> {anime.score}</div>
         ) : null;
         const releaseTag = anime.releaseDay ? <div className="card-release-tag">{anime.releaseDay}</div> : null;
+        const favorited = isFavorite && isFavorite(animeId);
 
         return (
           <div key={animeId} className="anime-card">
-            <a href={`#/anime/${animeId}`}>
-              <div className="card-poster-wrapper">
+            <div className="card-poster-wrapper">
+              <a href={targetHref}>
                 <img className="card-poster" src={anime.poster} alt={anime.title} loading="lazy" />
-                {epsBadge}
-                {scoreBadge}
-                {releaseTag}
-              </div>
+              </a>
+              {epsBadge}
+              {scoreBadge}
+              {releaseTag}
+              {toggleFavorite && isFavorite && (
+                <button
+                  className={`quick-favorite-btn ${favorited ? 'active' : ''}`}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    toggleFavorite(anime, isDh);
+                  }}
+                  title={favorited ? "Hapus dari Favorit" : "Tambah ke Favorit"}
+                >
+                  <Heart size={14} fill={favorited ? "var(--pink)" : "none"} color={favorited ? "var(--pink)" : "currentColor"} />
+                </button>
+              )}
+            </div>
+            <a href={targetHref}>
               <div className="card-body">
                 <h3 className="card-title">{anime.title}</h3>
                 <div className="card-meta">
@@ -461,6 +634,65 @@ function AnimeGrid({ list, limit }) {
           </div>
         );
       })}
+    </div>
+  );
+}
+
+// Reusable Pagination Component
+function PaginationBar({ pagination, currentPage, buildHref }) {
+  if (!pagination) return null;
+  const totalPages = pagination.lastPage || pagination.totalPages || currentPage;
+  if (totalPages <= 1) return null;
+
+  const getPageNumbers = () => {
+    const pages = [];
+    const maxVisible = 5;
+    let start = Math.max(1, currentPage - Math.floor(maxVisible / 2));
+    let end = Math.min(totalPages, start + maxVisible - 1);
+    if (end - start < maxVisible - 1) {
+      start = Math.max(1, end - maxVisible + 1);
+    }
+    if (start > 1) {
+      pages.push(1);
+      if (start > 2) pages.push('...');
+    }
+    for (let i = start; i <= end; i++) pages.push(i);
+    if (end < totalPages) {
+      if (end < totalPages - 1) pages.push('...');
+      pages.push(totalPages);
+    }
+    return pages;
+  };
+
+  return (
+    <div className="pagination-bar">
+      <a
+        href={currentPage > 1 ? buildHref(currentPage - 1) : undefined}
+        className={`page-btn page-prev ${currentPage <= 1 ? 'disabled' : ''}`}
+      >
+        <ChevronLeft size={16} /> Sebelumnya
+      </a>
+      <div className="page-numbers">
+        {getPageNumbers().map((p, idx) =>
+          p === '...' ? (
+            <span key={`dots-${idx}`} className="page-dots">…</span>
+          ) : (
+            <a
+              key={p}
+              href={buildHref(p)}
+              className={`page-num ${p === currentPage ? 'active' : ''}`}
+            >
+              {p}
+            </a>
+          )
+        )}
+      </div>
+      <a
+        href={pagination.hasNextPage ? buildHref(currentPage + 1) : undefined}
+        className={`page-btn page-next ${!pagination.hasNextPage ? 'disabled' : ''}`}
+      >
+        Berikutnya <ChevronRight size={16} />
+      </a>
     </div>
   );
 }
@@ -477,7 +709,7 @@ function CatalogSkeleton() {
 }
 
 // Home View
-function HomeView({ historyItems, clearHistory, triggerToast }) {
+function HomeView({ historyItems, clearHistory, triggerToast, toggleFavorite, isFavorite }) {
   const [spotlight, setSpotlight] = useState(null);
   const [ongoing, setOngoing] = useState([]);
   const [completed, setCompleted] = useState([]);
@@ -586,9 +818,9 @@ function HomeView({ historyItems, clearHistory, triggerToast }) {
                 <div key={item.animeId} className="anime-card">
                   <a href={`#/episode/${item.episodeId}`}>
                     <div className="card-poster-wrapper">
-                      <img className="card-poster" src={item.poster} alt={item.animeTitle} />
-                      <div className="card-badge bg-cyan">Lanjut</div>
-                      <div className="card-release-tag">{epText}</div>
+                       <img className="card-poster" src={item.poster} alt={item.animeTitle} />
+                       <div className="card-badge bg-cyan">Lanjut</div>
+                       <div className="card-release-tag">{epText}</div>
                     </div>
                     <div className="card-body">
                       <h3 className="card-title">{item.animeTitle}</h3>
@@ -611,7 +843,7 @@ function HomeView({ historyItems, clearHistory, triggerToast }) {
           <h2 className="section-title"><Flame className="title-icon text-accent" size={20} /> Anime Ongoing Terbaru</h2>
           <a href="#/ongoing" className="btn-view-all">Lihat Semua <ArrowRight size={14} /></a>
         </div>
-        {loading ? <CatalogSkeleton /> : <AnimeGrid list={ongoing} limit={18} />}
+        {loading ? <CatalogSkeleton /> : <AnimeGrid list={ongoing} limit={18} toggleFavorite={toggleFavorite} isFavorite={isFavorite} />}
       </div>
 
       {/* Completed List */}
@@ -620,14 +852,14 @@ function HomeView({ historyItems, clearHistory, triggerToast }) {
           <h2 className="section-title"><Sparkles className="title-icon text-pink" size={20} /> Anime Lengkap (Completed)</h2>
           <a href="#/completed" className="btn-view-all">Lihat Semua <ArrowRight size={14} /></a>
         </div>
-        {loading ? <CatalogSkeleton /> : <AnimeGrid list={completed} limit={18} />}
+        {loading ? <CatalogSkeleton /> : <AnimeGrid list={completed} limit={18} toggleFavorite={toggleFavorite} isFavorite={isFavorite} />}
       </div>
     </section>
   );
 }
 
-// Catalog View
-function CatalogView({ type, page }) {
+// Catalog View with Pagination
+function CatalogView({ type, page, toggleFavorite, isFavorite }) {
   const [list, setList] = useState([]);
   const [pagination, setPagination] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -635,58 +867,53 @@ function CatalogView({ type, page }) {
   useEffect(() => {
     let active = true;
     setLoading(true);
+    setList([]);
+    setPagination(null);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+
     const loadCatalog = async () => {
       const endpoint = type === 'ongoing' ? '/ongoing-anime' : '/complete-anime';
       try {
         const res = await fetchAPI(`${endpoint}?page=${page}`);
         if (res.data && active) {
           setList(res.data.animeList || []);
-          setPagination(res.data.pagination || null);
+          setPagination(res.pagination || res.data.pagination || null);
           setLoading(false);
-          window.scrollTo({ top: 0, behavior: 'smooth' });
         }
       } catch (err) {
         console.error('Catalog load error:', err);
         if (active) setLoading(false);
       }
     };
+    
     loadCatalog();
     return () => { active = false; };
   }, [type, page]);
+
+  const buildHref = (p) => `#/${type}/${p}`;
 
   return (
     <section className="app-view active">
       <div className="section-container">
         <div className="section-header">
           <h2 className="section-title">
-            {type === 'ongoing' ? 'Semua Anime Ongoing' : 'Semua Anime Completed'}
+            {type === 'ongoing' ? (
+              <><Flame className="title-icon text-accent" size={20} /> Semua Anime Ongoing</>
+            ) : (
+              <><Sparkles className="title-icon text-pink" size={20} /> Semua Anime Completed</>
+            )}
           </h2>
+          {pagination && (
+            <span className="page-info-badge">Halaman {page}</span>
+          )}
         </div>
         
         {loading ? (
           <CatalogSkeleton />
         ) : (
           <>
-            <AnimeGrid list={list} />
-            {pagination && (
-              <div className="pagination-container" style={{ display: 'flex' }}>
-                <button 
-                  className="btn-page" 
-                  disabled={!pagination.hasPrevPage}
-                  onClick={() => window.location.hash = `#/${type}/${pagination.prevPage}`}
-                >
-                  <SkipBack size={14} /> Sebelumnya
-                </button>
-                <span className="page-info">Halaman {pagination.currentPage} dari {pagination.totalPages || '?'}</span>
-                <button 
-                  className="btn-page" 
-                  disabled={!pagination.hasNextPage}
-                  onClick={() => window.location.hash = `#/${type}/${pagination.nextPage}`}
-                >
-                  Selanjutnya <SkipForward size={14} />
-                </button>
-              </div>
-            )}
+            <AnimeGrid list={list} toggleFavorite={toggleFavorite} isFavorite={isFavorite} />
+            <PaginationBar pagination={pagination} currentPage={page} buildHref={buildHref} />
           </>
         )}
       </div>
@@ -695,7 +922,7 @@ function CatalogView({ type, page }) {
 }
 
 // Detail View
-function DetailView({ animeId, triggerToast, saveToHistory }) {
+function DetailView({ animeId, triggerToast, saveToHistory, toggleFavorite, isFavorite }) {
   const [detail, setDetail] = useState(null);
   const [loading, setLoading] = useState(true);
   const [sortAsc, setSortAsc] = useState(false);
@@ -763,6 +990,27 @@ function DetailView({ animeId, triggerToast, saveToHistory }) {
               <span className="meta-tag"><Info size={14} /> <span>{detail.status || '-'}</span></span>
               <span className="meta-tag"><Film size={14} /> <span>{detail.episodes || '?'} Eps</span></span>
               <span className="meta-tag"><Clock size={14} /> <span>{detail.duration || '-'}</span></span>
+              {toggleFavorite && isFavorite && (
+                <button 
+                  onClick={() => toggleFavorite(detail, false)} 
+                  className={`meta-tag btn-favorite-toggle ${isFavorite(animeId) ? 'active' : ''}`}
+                  style={{ 
+                    cursor: 'pointer', 
+                    border: 'none', 
+                    background: isFavorite(animeId) ? 'rgba(236,72,153,0.15)' : 'rgba(255,255,255,0.06)',
+                    color: isFavorite(animeId) ? 'var(--pink)' : 'var(--text-secondary)',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    padding: '6px 12px',
+                    borderRadius: '6px',
+                    transition: 'var(--transition-smooth)'
+                  }}
+                >
+                  <Heart size={14} fill={isFavorite(animeId) ? 'var(--pink)' : 'none'} color={isFavorite(animeId) ? 'var(--pink)' : 'currentColor'} /> 
+                  <span>{isFavorite(animeId) ? 'Favorit Saya' : 'Tambah Favorit'}</span>
+                </button>
+              )}
             </div>
 
             <div className="detail-genres">
@@ -827,7 +1075,7 @@ function DetailView({ animeId, triggerToast, saveToHistory }) {
             <div className="section-header">
               <h2 className="section-title"><ThumbsUp size={20} className="title-icon" /> Rekomendasi Anime</h2>
             </div>
-            <AnimeGrid list={detail.recommendedAnimeList} />
+            <AnimeGrid list={detail.recommendedAnimeList} toggleFavorite={toggleFavorite} isFavorite={isFavorite} />
           </div>
         )}
       </div>
@@ -844,6 +1092,7 @@ function StreamView({ episodeId, triggerToast, saveToHistory }) {
   const [serverList, setServerList] = useState([]);
   const [activeServer, setActiveServer] = useState('');
   const [animeDetails, setAnimeDetails] = useState(null);
+  const [downloadOpen, setDownloadOpen] = useState(false);
   const activeEpisodeRef = useRef(null);
 
   useEffect(() => {
@@ -852,6 +1101,7 @@ function StreamView({ episodeId, triggerToast, saveToHistory }) {
     setStream(null);
     setAnimeDetails(null);
     setPlayerUrl('');
+    setDownloadOpen(false);
     
     const loadStreamData = async () => {
       try {
@@ -1024,57 +1274,50 @@ function StreamView({ episodeId, triggerToast, saveToHistory }) {
             </div>
           </div>
 
-          {/* Quality switcher list */}
-          {stream.server?.qualities && (
-            <div className="quality-selector-section">
-              <h3>Pilih Kualitas Streaming:</h3>
-              <div className="quality-badges">
-                {stream.server.qualities.filter(q => q.serverList && q.serverList.length > 0).map(q => (
-                  <button 
-                    key={q.title} 
-                    className={`quality-btn ${activeQuality === q.title ? 'active' : ''}`}
-                    onClick={() => switchQuality(q)}
-                  >
-                    {q.title}
-                  </button>
-                ))}
+          {/* Download block as collapsible dropdown */}
+          <div className={`download-dropdown-section ${downloadOpen ? 'open' : ''}`}>
+            <button className="download-dropdown-toggle" onClick={() => setDownloadOpen(!downloadOpen)}>
+              <div className="download-toggle-left">
+                <Download size={18} />
+                <span>Link Download</span>
               </div>
-            </div>
-          )}
-
-          {/* Download block links */}
-          <div className="download-section">
-            <h2 className="section-title"><Download size={20} className="title-icon" /> Link Download</h2>
-            <div className="download-container">
-              {stream.downloadUrl && stream.downloadUrl.qualities ? (
-                stream.downloadUrl.qualities.map((q, idx) => (
-                  <div key={idx} className="download-row">
-                    <div className="dl-quality">{q.title}</div>
-                    <div className="dl-size">{q.size || ''}</div>
-                    <div className="dl-links">
-                      {q.urls.map((link, lIdx) => (
-                        <a 
-                          key={lIdx} 
-                          href={link.url} 
-                          target="_blank" 
-                          rel="noopener noreferrer" 
-                          className="btn-dl"
-                        >
-                          {link.title}
-                        </a>
-                      ))}
+              <ChevronDown size={18} className={`download-chevron ${downloadOpen ? 'rotated' : ''}`} />
+            </button>
+            {downloadOpen && (
+              <div className="download-dropdown-body">
+                {stream.downloadUrl && stream.downloadUrl.qualities ? (
+                  stream.downloadUrl.qualities.map((q, idx) => (
+                    <div key={idx} className="download-dropdown-row">
+                      <div className="dl-row-header">
+                        <span className="dl-quality">{q.title}</span>
+                        <span className="dl-size">{q.size || ''}</span>
+                      </div>
+                      <div className="dl-links">
+                        {q.urls.map((link, lIdx) => (
+                          <a 
+                            key={lIdx} 
+                            href={link.url} 
+                            target="_blank" 
+                            rel="noopener noreferrer" 
+                            className="btn-dl"
+                          >
+                            {link.title}
+                          </a>
+                        ))}
+                      </div>
                     </div>
-                  </div>
-                ))
-              ) : (
-                <div className="no-data">Link unduhan tidak tersedia untuk episode ini.</div>
-              )}
-            </div>
+                  ))
+                ) : (
+                  <div className="no-data" style={{ padding: '16px' }}>Link unduhan tidak tersedia untuk episode ini.</div>
+                )}
+              </div>
+            )}
           </div>
         </div>
 
-        {/* Sidebar right area */}
+        {/* Sidebar — right column: anime info + quality + episode list */}
         <div className="stream-sidebar">
+          {/* Anime mini info card */}
           {animeDetails && (
             <div className="sidebar-block anime-mini-info">
               <img className="anime-mini-poster" src={animeDetails.poster} alt={animeDetails.title} />
@@ -1088,21 +1331,42 @@ function StreamView({ episodeId, triggerToast, saveToHistory }) {
               </div>
             </div>
           )}
-          
-          <div className="sidebar-block episode-list-block">
+
+          {/* Quality selector in sidebar */}
+          {stream.server?.qualities && (
+            <div className="sidebar-block">
+              <div className="sidebar-block-header">
+                <h3><Video size={16} /> Kualitas</h3>
+              </div>
+              <div className="quality-badges" style={{ flexWrap: 'wrap' }}>
+                {stream.server.qualities.filter(q => q.serverList && q.serverList.length > 0).map(q => (
+                  <button
+                    key={q.title}
+                    className={`quality-btn ${activeQuality === q.title ? 'active' : ''}`}
+                    onClick={() => switchQuality(q)}
+                  >
+                    {q.title}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Episode list in sidebar */}
+          <div className="sidebar-block sidebar-episode-block">
             <div className="sidebar-block-header">
               <h3><List size={16} /> Semua Episode</h3>
             </div>
-            <div className="sidebar-episode-list">
+            <div className="sidebar-episode-scroll">
               {stream.info?.episodeList && stream.info.episodeList.map(ep => {
                 const epNum = extractEpisodeNumber(ep.title);
                 const isActive = ep.episodeId === episodeId;
                 return (
-                  <a 
+                  <a
                     key={ep.episodeId}
                     ref={isActive ? activeEpisodeRef : null}
-                    href={`#/episode/${ep.episodeId}`} 
-                    className={`sidebar-ep-item ${isActive ? 'active' : ''}`}
+                    href={`#/episode/${ep.episodeId}`}
+                    className={`stream-ep-item ${isActive ? 'active' : ''}`}
                     title={ep.title}
                   >
                     {isNaN(epNum) ? epNum : `Episode ${epNum}`}
@@ -1118,8 +1382,646 @@ function StreamView({ episodeId, triggerToast, saveToHistory }) {
   );
 }
 
-// Search Results / Genre View
-function ResultsView({ mode, query, genreId, page = 1 }) {
+// Helper: normalize donghua item to common anime card format
+function normalizeDonghua(item) {
+  // Determine the link destination
+  const slug = item.slug || '';
+  const href = item.href || '';
+  // href looks like "/donghua/episode/..." or "/donghua/detail/..."
+  const isEpisode = href.includes('/donghua/episode/');
+  const isDetail  = href.includes('/donghua/detail/');
+  let linkHash = '#/donghua-episode/' + slug;
+  if (isDetail) linkHash = '#/donghua-detail/' + slug;
+
+  return {
+    ...item,
+    animeId: slug,
+    title: item.title,
+    poster: item.poster,
+    latestReleaseDate: item.current_episode || item.status || '',
+    _donghuaLink: linkHash,
+  };
+}
+
+// Donghua Card Grid – opens a detail modal on click instead of navigating
+function DonghuaGrid({ list, onCardClick, toggleFavorite, isFavorite }) {
+  if (!list || list.length === 0) {
+    return <div className="no-data">Tidak ada Donghua yang ditemukan.</div>;
+  }
+  return (
+    <div className="anime-grid">
+      {list.map((item, idx) => {
+        const norm = normalizeDonghua(item);
+        const favorited = isFavorite && isFavorite(norm.animeId);
+        return (
+          <div
+            key={norm.animeId + idx}
+            className="anime-card"
+            style={{ cursor: 'pointer' }}
+            onClick={() => onCardClick && onCardClick(item)}
+          >
+            <div>
+              <div className="card-poster-wrapper">
+                <img className="card-poster" src={norm.poster} alt={norm.title} loading="lazy" />
+                {norm.current_episode && (
+                  <div className="card-release-tag">{norm.current_episode}</div>
+                )}
+                {norm.status && (
+                  <div className="card-badge" style={{ background: norm.status === 'Ongoing' ? 'var(--accent)' : 'var(--pink)' }}>
+                    {norm.status}
+                  </div>
+                )}
+                {toggleFavorite && isFavorite && (
+                  <button
+                    className={`quick-favorite-btn ${favorited ? 'active' : ''}`}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      toggleFavorite({ ...item, slug: norm.animeId }, true);
+                    }}
+                    title={favorited ? "Hapus dari Favorit" : "Tambah ke Favorit"}
+                  >
+                    <Heart size={14} fill={favorited ? "var(--pink)" : "none"} color={favorited ? "var(--pink)" : "currentColor"} />
+                  </button>
+                )}
+                <div className="dh-card-play-overlay">
+                  <Play size={28} fill="white" color="white" />
+                </div>
+              </div>
+              <div className="card-body">
+                <h3 className="card-title">{norm.title}</h3>
+                <div className="card-meta">
+                  <span className="card-episodes"><Play size={10} fill="currentColor" /> Detail & Episode</span>
+                  <span>{norm.type || 'Donghua'}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// Donghua View – renders the grid and manages the detail modal
+function DonghuaView({ page, triggerToast, toggleFavorite, isFavorite }) {
+  const [tab, setTab] = useState('latest');
+  const [latestList, setLatestList] = useState([]);
+  const [completedList, setCompletedList] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedItem, setSelectedItem] = useState(null);
+
+  useEffect(() => {
+    let active = true;
+    setLoading(true);
+    setLatestList([]);
+    setCompletedList([]);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+
+    const loadDonghua = async () => {
+      const strategies = [];
+      const rawUrl = `https://www.sankavollerei.com/anime/donghua/home/${page}`;
+
+      if (window.location.protocol.startsWith('http')) {
+        strategies.push(`/api/donghua/home/${page}`);
+      }
+      strategies.push(
+        `https://corsproxy.io/?${encodeURIComponent(rawUrl)}`,
+        `https://api.allorigins.win/raw?url=${encodeURIComponent(rawUrl)}`
+      );
+
+      let parsed = null;
+      for (const url of strategies) {
+        try {
+          const ctrl = new AbortController();
+          const tid = setTimeout(() => ctrl.abort(), 8000);
+          const resp = await fetch(url, { signal: ctrl.signal });
+          clearTimeout(tid);
+          if (!resp.ok) continue;
+          const json = await resp.json();
+          if (json && (json.status === 'success' || json.latest_release)) {
+            parsed = json;
+            break;
+          }
+        } catch (e) {
+          console.warn('Donghua fetch strategy failed:', url, e.message);
+        }
+      }
+
+      if (!active) return;
+
+      if (parsed) {
+        setLatestList(parsed.latest_release || []);
+        setCompletedList(parsed.completed_donghua || []);
+        setLoading(false);
+      } else {
+        triggerToast('Gagal memuat daftar Donghua.', 'error');
+        setLoading(false);
+      }
+    };
+
+    loadDonghua();
+    return () => { active = false; };
+  }, [page]);
+
+  return (
+    <section className="app-view active">
+      {page === 1 ? (
+        <>
+          {/* Ongoing List */}
+          <div className="section-container">
+            <div className="section-header">
+              <h2 className="section-title">
+                <Flame className="title-icon text-accent" size={20} /> Donghua Ongoing Terbaru
+              </h2>
+            </div>
+            {loading ? (
+              <CatalogSkeleton />
+            ) : (
+              <DonghuaGrid list={latestList.slice(0, 18)} onCardClick={setSelectedItem} toggleFavorite={toggleFavorite} isFavorite={isFavorite} />
+            )}
+          </div>
+
+          {/* Completed List */}
+          <div className="section-container">
+            <div className="section-header">
+              <h2 className="section-title">
+                <Sparkles className="title-icon text-pink" size={20} /> Donghua Lengkap (Completed)
+              </h2>
+            </div>
+            {loading ? (
+              <CatalogSkeleton />
+            ) : (
+              <DonghuaGrid list={completedList.slice(0, 18)} onCardClick={setSelectedItem} toggleFavorite={toggleFavorite} isFavorite={isFavorite} />
+            )}
+          </div>
+        </>
+      ) : (
+        <div className="section-container">
+          <div className="section-header">
+            <h2 className="section-title">
+              <Film className="title-icon" size={20} style={{ color: 'var(--cyan)' }} /> Donghua Terbaru — Halaman {page}
+            </h2>
+          </div>
+          {loading ? (
+            <CatalogSkeleton />
+          ) : (
+            <DonghuaGrid list={latestList} onCardClick={setSelectedItem} toggleFavorite={toggleFavorite} isFavorite={isFavorite} />
+          )}
+        </div>
+      )}
+
+      {/* Pagination at the bottom */}
+      {!loading && (
+        <div className="section-container" style={{ marginTop: '20px' }}>
+          <PaginationBar pagination={{ lastPage: 32 }} currentPage={page} buildHref={(p) => `#/donghua/${p}`} />
+        </div>
+      )}
+
+      {/* Donghua Detail Modal */}
+      {selectedItem && (
+        <DonghuaDetailModal
+          item={selectedItem}
+          onClose={() => setSelectedItem(null)}
+          toggleFavorite={toggleFavorite}
+          isFavorite={isFavorite}
+        />
+      )}
+    </section>
+  );
+}
+
+// ─── Donghua Detail Modal ────────────────────────────────────────────────────
+function DonghuaDetailModal({ item, onClose, toggleFavorite, isFavorite }) {
+  const [detail, setDetail] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [sortAsc, setSortAsc] = useState(false);
+
+  const seriesSlug = getSeriesSlug(item);
+
+  useEffect(() => {
+    let active = true;
+    setLoading(true);
+    setDetail(null);
+
+    fetchDonghuaAPI(`/donghua/detail/${seriesSlug}`)
+      .then(data => { if (active && data) setDetail(data); })
+      .catch(e => console.error('DonghuaDetailModal error:', e))
+      .finally(() => { if (active) setLoading(false); });
+
+    return () => { active = false; };
+  }, [seriesSlug]);
+
+  // Escape key & body scroll lock
+  useEffect(() => {
+    const onEsc = (e) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', onEsc);
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.removeEventListener('keydown', onEsc);
+      document.body.style.overflow = '';
+    };
+  }, [onClose]);
+
+  const episodes = detail?.episodes_list
+    ? (sortAsc ? [...detail.episodes_list].reverse() : detail.episodes_list)
+    : [];
+
+  return (
+    <div className="dh-modal-overlay" onClick={onClose}>
+      <div className="dh-modal-panel" onClick={e => e.stopPropagation()}>
+        <div className="dh-modal-topbar">
+          <button className="dh-modal-close" onClick={onClose} aria-label="Tutup">
+            <X size={22} />
+          </button>
+        </div>
+
+        <div className="dh-modal-body">
+          {loading ? (
+            <div className="dh-modal-loading">
+              <Loader2 size={44} style={{ animation: 'spin 1s linear infinite', color: 'var(--cyan)' }} />
+              <p>Memuat detail Donghua...</p>
+            </div>
+          ) : detail ? (
+            <>
+              {/* Hero Banner */}
+              <div className="dh-modal-hero" style={{ backgroundImage: `url('${detail.poster}')` }}>
+                <div className="dh-modal-hero-overlay" />
+                <div className="dh-modal-hero-content">
+                  <img className="dh-modal-poster" src={detail.poster} alt={detail.title} />
+                  <div className="dh-modal-info">
+                    <div className="dh-modal-badges">
+                      <span className="hero-badge" style={{ background: 'var(--cyan)' }}>{detail.type || 'Donghua'}</span>
+                      <span className="hero-badge" style={{ background: detail.status === 'Completed' ? 'var(--pink)' : 'var(--accent)' }}>
+                        {detail.status}
+                      </span>
+                      {detail.season && <span className="hero-badge">{detail.season}</span>}
+                      {detail.country && <span className="hero-badge">{detail.country}</span>}
+                      
+                      {toggleFavorite && isFavorite && (
+                        <button 
+                          onClick={() => toggleFavorite({ ...detail, slug: seriesSlug }, true)}
+                          className="hero-badge"
+                          style={{
+                            cursor: 'pointer',
+                            border: 'none',
+                            background: isFavorite(seriesSlug) ? 'var(--pink)' : 'rgba(255,255,255,0.12)',
+                            color: '#fff',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                            fontWeight: '600'
+                          }}
+                        >
+                          <Heart size={11} fill={isFavorite(seriesSlug) ? '#fff' : 'none'} color="#fff" />
+                          <span>{isFavorite(seriesSlug) ? 'Favorit Saya' : 'Tambah Favorit'}</span>
+                        </button>
+                      )}
+                    </div>
+                    <h2 className="dh-modal-title">{detail.title}</h2>
+                    {detail.alter_title && <p className="dh-modal-alter">{detail.alter_title}</p>}
+                    <div className="dh-modal-meta-row">
+                      {detail.studio && <span><strong>Studio:</strong> {detail.studio}</span>}
+                      {detail.network && <span><strong>Network:</strong> {detail.network}</span>}
+                      {detail.episodes_count && (
+                        <span><Film size={13} style={{ verticalAlign: 'middle', marginRight: '4px' }} />{detail.episodes_count} Eps</span>
+                      )}
+                      {detail.duration && (
+                        <span><Clock size={13} style={{ verticalAlign: 'middle', marginRight: '4px' }} />{detail.duration}</span>
+                      )}
+                      {detail.released_on && (
+                        <span><Calendar size={13} style={{ verticalAlign: 'middle', marginRight: '4px' }} />{detail.released_on}</span>
+                      )}
+                    </div>
+                    {detail.genres && detail.genres.length > 0 && (
+                      <div className="dh-modal-genres">
+                        {detail.genres.map(g => (
+                          <span key={g.slug} className="tag-genre">{g.name}</span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Synopsis */}
+              {detail.synopsis && (
+                <div className="dh-modal-synopsis">
+                  <h3><Info size={16} style={{ verticalAlign: 'middle', marginRight: '6px' }} />Sinopsis</h3>
+                  <p>{detail.synopsis}</p>
+                </div>
+              )}
+
+              {/* Episode List */}
+              <div className="dh-modal-episodes">
+                <div className="section-header" style={{ marginBottom: '14px' }}>
+                  <h3 className="section-title" style={{ fontSize: '17px' }}>
+                    <PlaySquare size={18} className="title-icon" /> Daftar Episode
+                    <span className="page-info-badge" style={{ marginLeft: '8px', fontSize: '12px' }}>{episodes.length} Eps</span>
+                  </h3>
+                  <button className="btn-sort" onClick={() => setSortAsc(!sortAsc)}>
+                    <ArrowUpDown size={14} /> {sortAsc ? 'Terlama' : 'Terbaru'}
+                  </button>
+                </div>
+                {episodes.length === 0 ? (
+                  <div className="no-data">Episode belum tersedia.</div>
+                ) : (
+                  <div className="episodes-grid numeric-grid">
+                    {episodes.map((ep, idx) => {
+                      const epNum = extractEpisodeNumber(ep.episode);
+                      const epSlug = ep.slug || ep.href?.split('/').pop() || '';
+                      return (
+                        <a
+                          key={ep.slug || idx}
+                          href={`#/donghua-episode/${epSlug}`}
+                          className="episode-card numeric-card"
+                          title={ep.episode}
+                        >
+                          <span>{epNum || String(idx + 1)}</span>
+                        </a>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </>
+          ) : (
+            <div className="dh-modal-loading">
+              <AlertCircle size={44} style={{ color: 'var(--pink)' }} />
+              <p>Gagal memuat detail Donghua.</p>
+              <button className="btn-hero-play" onClick={onClose} style={{ marginTop: '16px' }}>Tutup</button>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Donghua Stream View ──────────────────────────────────────────────────────
+function DonghuaStreamView({ episodeSlug, triggerToast, saveToHistory }) {
+  const [stream, setStream] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [playerUrl, setPlayerUrl] = useState('');
+  const [serverList, setServerList] = useState([]);
+  const [activeServer, setActiveServer] = useState('');
+  const [downloadOpen, setDownloadOpen] = useState(false);
+  const activeEpisodeRef = useRef(null);
+
+  useEffect(() => {
+    let active = true;
+    setLoading(true);
+    setStream(null);
+    setPlayerUrl('');
+    setDownloadOpen(false);
+
+    const loadStream = async () => {
+      try {
+        let data = null;
+        try {
+          const res = await fetchAPI(`/donghua/episode/${episodeSlug}`);
+          data = res.data || res;
+        } catch (e) {
+          const raw = await fetchDonghuaAPI(`/donghua/episode/${episodeSlug}`);
+          data = raw.data || raw;
+        }
+        if (!active) return;
+
+        setStream(data);
+        setLoading(false);
+
+        if (data.streaming?.main_url?.url) {
+          setPlayerUrl(data.streaming.main_url.url);
+        } else if (data.streaming?.servers?.length > 0) {
+          setPlayerUrl(data.streaming.servers[0].url);
+        }
+
+        if (data.streaming?.servers) {
+          setServerList(data.streaming.servers);
+          if (data.streaming.servers.length > 0) {
+            setActiveServer(data.streaming.servers[0].name);
+          }
+        }
+
+        if (data.donghua_details?.slug) {
+          saveToHistory(
+            data.donghua_details.slug,
+            data.donghua_details.title || data.episode,
+            data.donghua_details.poster || '',
+            episodeSlug,
+            data.episode
+          );
+        }
+
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        setTimeout(() => {
+          if (activeEpisodeRef.current) {
+            activeEpisodeRef.current.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+          }
+        }, 500);
+      } catch (err) {
+        console.error('DonghuaStream error:', err);
+        if (active) {
+          triggerToast('Gagal memuat streaming Donghua.', 'error');
+          setLoading(false);
+        }
+      }
+    };
+
+    loadStream();
+    return () => { active = false; };
+  }, [episodeSlug]);
+
+  const switchServer = (server) => {
+    setActiveServer(server.name);
+    setPlayerUrl(server.url);
+    triggerToast(`Menghubungkan ke server ${server.name}...`);
+  };
+
+  if (loading) {
+    return (
+      <section className="app-view active" style={{ display: 'flex', justifyContent: 'center', padding: '100px 0' }}>
+        <Loader2 className="spinner shimmer" size={40} style={{ animation: 'spin 1s infinite linear' }} />
+      </section>
+    );
+  }
+
+  if (!stream) {
+    return (
+      <section className="app-view active">
+        <div className="no-data">Gagal memuat player Donghua.</div>
+      </section>
+    );
+  }
+
+  const downloadQualities = stream.download_url ? Object.keys(stream.download_url).map(key => {
+    const title = key.replace('download_url_', '');
+    const urlsObj = stream.download_url[key];
+    const urls = Object.keys(urlsObj).map(provider => ({
+      title: provider,
+      url: urlsObj[provider]
+    }));
+    return { title, urls };
+  }) : [];
+
+  return (
+    <section className="app-view active">
+      <div className="stream-container">
+        <div className="stream-main">
+          <div className="video-section">
+            <div className="video-player-wrapper">
+              <iframe
+                id="donghua-video-player"
+                src={playerUrl}
+                frameBorder="0"
+                allowFullScreen
+                title={stream.episode}
+              ></iframe>
+            </div>
+
+            <div className="video-controls">
+              <a
+                href={stream.navigation?.previous_episode ? `#/donghua-episode/${stream.navigation.previous_episode.slug}` : undefined}
+                className={`btn-control ${!stream.navigation?.previous_episode ? 'disabled' : ''}`}
+              >
+                <SkipBack size={14} /> Episode Seb
+              </a>
+
+              <div className="server-selector-container">
+                <span>Server:</span>
+                <div className="server-badges">
+                  {serverList.map(srv => (
+                    <button
+                      key={srv.name}
+                      className={`server-badge ${activeServer === srv.name ? 'active' : ''}`}
+                      onClick={() => switchServer(srv)}
+                    >
+                      {srv.name}
+                    </button>
+                  ))}
+                  {serverList.length === 0 && <span style={{ fontSize: '12px', color: '#aaa' }}>Def server</span>}
+                </div>
+              </div>
+
+              <a
+                href={stream.navigation?.next_episode ? `#/donghua-episode/${stream.navigation.next_episode.slug}` : undefined}
+                className={`btn-control ${!stream.navigation?.next_episode ? 'disabled' : ''}`}
+              >
+                Episode Sel <SkipForward size={14} />
+              </a>
+            </div>
+          </div>
+
+          <div className="stream-info">
+            <h1 className="stream-title">{stream.episode}</h1>
+            <div className="stream-meta">
+              <span className="stream-meta-item"><Clock size={12} /> {stream.donghua_details?.released || '-'}</span>
+              <span className="stream-meta-item"><Film size={12} /> Donghua</span>
+            </div>
+          </div>
+
+          <div className={`download-dropdown-section ${downloadOpen ? 'open' : ''}`}>
+            <button className="download-dropdown-toggle" onClick={() => setDownloadOpen(!downloadOpen)}>
+              <div className="download-toggle-left">
+                <Download size={18} />
+                <span>Link Download</span>
+              </div>
+              <ChevronDown size={18} className={`download-chevron ${downloadOpen ? 'rotated' : ''}`} />
+            </button>
+            {downloadOpen && (
+              <div className="download-dropdown-body">
+                {downloadQualities.length > 0 ? (
+                  downloadQualities.map((q, idx) => (
+                    <div key={idx} className="download-dropdown-row">
+                      <div className="dl-row-header">
+                        <span className="dl-quality">{q.title}</span>
+                      </div>
+                      <div className="dl-links">
+                        {q.urls.map((link, lIdx) => (
+                          <a key={lIdx} href={link.url} target="_blank" rel="noopener noreferrer" className="btn-dl">
+                            {link.title}
+                          </a>
+                        ))}
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="no-data" style={{ padding: '16px' }}>Link unduhan tidak tersedia.</div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Sidebar — right column: poster info + server selection + episode list */}
+        <div className="stream-sidebar">
+          {stream.donghua_details && (
+            <div className="sidebar-block anime-mini-info">
+              {stream.donghua_details.poster && (
+                <img className="anime-mini-poster" src={stream.donghua_details.poster} alt={stream.donghua_details.title} />
+              )}
+              <div className="anime-mini-details">
+                <h4 className="anime-mini-title">{stream.donghua_details.title}</h4>
+                <div className="anime-mini-meta">
+                  <div>Type: <span style={{ color: 'var(--cyan)' }}>Donghua</span></div>
+                  <div>Rilis: <span>{stream.donghua_details.released || '-'}</span></div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Server list in sidebar */}
+          {serverList.length > 0 && (
+            <div className="sidebar-block">
+              <div className="sidebar-block-header">
+                <h3><Video size={16} /> Pilihan Server</h3>
+              </div>
+              <div className="quality-badges" style={{ flexWrap: 'wrap' }}>
+                {serverList.map(srv => (
+                  <button
+                    key={srv.name}
+                    className={`quality-btn ${activeServer === srv.name ? 'active' : ''}`}
+                    onClick={() => switchServer(srv)}
+                  >
+                    {srv.name}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Episode list in sidebar */}
+          <div className="sidebar-block sidebar-episode-block">
+            <div className="sidebar-block-header">
+              <h3><List size={16} /> Semua Episode</h3>
+            </div>
+            <div className="sidebar-episode-scroll">
+              {stream.episodes_list?.map(ep => {
+                const epNum = extractEpisodeNumber(ep.episode);
+                const epSlug = ep.slug || ep.href?.split('/').pop() || '';
+                const isActive = epSlug === episodeSlug;
+                return (
+                  <a
+                    key={epSlug || ep.episode}
+                    ref={isActive ? activeEpisodeRef : null}
+                    href={`#/donghua-episode/${epSlug}`}
+                    className={`stream-ep-item ${isActive ? 'active' : ''}`}
+                    title={ep.episode}
+                  >
+                    {isNaN(Number(epNum)) ? epNum : `Ep ${epNum}`}
+                  </a>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+// Search Results / Genre View with Pagination
+function ResultsView({ mode, query, genreId, page = 1, toggleFavorite, isFavorite }) {
   const [list, setList] = useState([]);
   const [pagination, setPagination] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -1131,67 +2033,176 @@ function ResultsView({ mode, query, genreId, page = 1 }) {
   useEffect(() => {
     let active = true;
     setLoading(true);
+    setList([]);
+    setPagination(null);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+
     const loadResults = async () => {
-      const endpoint = mode === 'search' 
-        ? `/search/${query}` 
-        : `/genre/${genreId}?page=${page}`;
-      try {
-        const res = await fetchAPI(endpoint);
-        if (res.data && active) {
-          setList(res.data.animeList || []);
-          setPagination(res.data.pagination || null);
-          setLoading(false);
-          window.scrollTo({ top: 0, behavior: 'smooth' });
+      if (mode === 'search') {
+        try {
+          const [animeRes, donghuaRes] = await Promise.allSettled([
+            fetchAPI(`/search/${query}`),
+            fetchDonghuaAPI(`/donghua/search/${query}`)
+          ]);
+
+          let mergedList = [];
+
+          if (animeRes.status === 'fulfilled' && animeRes.value?.data?.animeList) {
+            mergedList = [...animeRes.value.data.animeList];
+          }
+
+          if (donghuaRes.status === 'fulfilled' && donghuaRes.value) {
+            const dhVal = donghuaRes.value;
+            const dhList = dhVal.data || dhVal || [];
+            if (Array.isArray(dhList)) {
+              const normalizedDh = dhList.map(item => ({
+                ...item,
+                animeId: item.slug || '',
+                isDonghua: true
+              }));
+              mergedList = [...normalizedDh, ...mergedList];
+            }
+          }
+
+          if (active) {
+            setList(mergedList);
+            setLoading(false);
+          }
+        } catch (err) {
+          console.error('Search results fetch error:', err);
+          if (active) setLoading(false);
         }
-      } catch (err) {
-        console.error('Results fetch error:', err);
-        if (active) setLoading(false);
+      } else {
+        const endpoint = `/genre/${genreId}?page=${page}`;
+        try {
+          const res = await fetchAPI(endpoint);
+          if (res.data && active) {
+            setList(res.data.animeList || []);
+            setPagination(res.pagination || res.data.pagination || null);
+            setLoading(false);
+          }
+        } catch (err) {
+          console.error('Results fetch error:', err);
+          if (active) setLoading(false);
+        }
       }
     };
+
     loadResults();
     return () => { active = false; };
   }, [mode, query, genreId, page]);
+
+  const buildHref = (p) => `#/genre/${genreId}/${p}`;
 
   return (
     <section className="app-view active">
       <div className="section-container">
         <div className="section-header">
-          <h2 className="section-title">
+          <h2 className="section-title results-title">
             {loading ? (
-              <Loader2 className="spinner shimmer" size={20} style={{ animation: 'spin 1s infinite linear', display: 'inline-block', marginRight: '8px' }} />
+              <Loader2 className="spinner shimmer" size={20} style={{ animation: 'spin 1s infinite linear', display: 'inline-block', marginRight: '8px', flexShrink: 0 }} />
             ) : null}
-            {mode === 'search' ? `Hasil Pencarian untuk: "${decodeURIComponent(query)}"` : `Genre: ${displayName}`}
+            <span className="results-title-text">
+              {mode === 'search' ? `Hasil Pencarian: "${decodeURIComponent(query)}"` : `Genre: ${displayName}`}
+            </span>
           </h2>
+          {mode === 'genre' && pagination && (
+            <span className="page-info-badge">Halaman {page}</span>
+          )}
         </div>
 
         {loading ? (
           <CatalogSkeleton />
         ) : (
           <>
-            <AnimeGrid list={list} />
-            
-            {mode === 'genre' && pagination && (
-              <div className="pagination-container" style={{ display: 'flex' }}>
-                <button 
-                  className="btn-page" 
-                  disabled={!pagination.hasPrevPage}
-                  onClick={() => window.location.hash = `#/genre/${genreId}/${pagination.prevPage}`}
-                >
-                  <SkipBack size={14} /> Sebelumnya
-                </button>
-                <span className="page-info">Halaman {pagination.currentPage} dari {pagination.totalPages || '?'}</span>
-                <button 
-                  className="btn-page" 
-                  disabled={!pagination.hasNextPage}
-                  onClick={() => window.location.hash = `#/genre/${genreId}/${pagination.nextPage}`}
-                >
-                  Selanjutnya <SkipForward size={14} />
-                </button>
-              </div>
+            <AnimeGrid list={list} toggleFavorite={toggleFavorite} isFavorite={isFavorite} />
+            {mode === 'genre' && (
+              <PaginationBar pagination={pagination} currentPage={page} buildHref={buildHref} />
             )}
           </>
         )}
       </div>
+    </section>
+  );
+}
+
+// ─── Favorites View ──────────────────────────────────────────────────────────
+function FavoritesView({ favorites, toggleFavorite, isFavorite }) {
+  const animeFavorites = favorites.filter(x => !x.isDonghua);
+  const donghuaFavorites = favorites.filter(x => x.isDonghua);
+
+  // Normalize favorites to match grid items
+  const normAnimeList = animeFavorites.map(x => ({
+    animeId: x.id,
+    title: x.title,
+    poster: x.poster,
+    status: x.status,
+    type: x.type
+  }));
+
+  const normDonghuaList = donghuaFavorites.map(x => ({
+    slug: x.id,
+    title: x.title,
+    poster: x.poster,
+    status: x.status,
+    type: x.type
+  }));
+
+  const [selectedDonghua, setSelectedDonghua] = useState(null);
+
+  return (
+    <section className="app-view active">
+      <div className="section-container">
+        <div className="section-header" style={{ marginBottom: '20px' }}>
+          <h2 className="section-title">
+            <Heart className="title-icon text-pink" size={20} fill="var(--pink)" /> Favorit Saya
+          </h2>
+        </div>
+
+        {/* Anime Favorites Section */}
+        <div className="section-container" style={{ marginBottom: '40px' }}>
+          <div className="section-header">
+            <h3 className="section-title" style={{ fontSize: '18px' }}>
+              <PlaySquare className="title-icon" size={18} /> Anime Favorit
+              <span className="page-info-badge" style={{ marginLeft: '8px', fontSize: '12px' }}>{animeFavorites.length}</span>
+            </h3>
+          </div>
+          {animeFavorites.length === 0 ? (
+            <div className="no-data" style={{ padding: '24px', background: 'rgba(255,255,255,0.02)', borderRadius: '8px' }}>
+              Belum ada anime yang ditambahkan ke favorit.
+            </div>
+          ) : (
+            <AnimeGrid list={normAnimeList} toggleFavorite={toggleFavorite} isFavorite={isFavorite} />
+          )}
+        </div>
+
+        {/* Donghua Favorites Section */}
+        <div className="section-container">
+          <div className="section-header">
+            <h3 className="section-title" style={{ fontSize: '18px' }}>
+              <Film className="title-icon text-cyan" size={18} /> Donghua Favorit
+              <span className="page-info-badge" style={{ marginLeft: '8px', fontSize: '12px' }}>{donghuaFavorites.length}</span>
+            </h3>
+          </div>
+          {donghuaFavorites.length === 0 ? (
+            <div className="no-data" style={{ padding: '24px', background: 'rgba(255,255,255,0.02)', borderRadius: '8px' }}>
+              Belum ada donghua yang ditambahkan ke favorit.
+            </div>
+          ) : (
+            <DonghuaGrid list={normDonghuaList} onCardClick={setSelectedDonghua} toggleFavorite={toggleFavorite} isFavorite={isFavorite} />
+          )}
+        </div>
+      </div>
+
+      {/* Donghua Detail Modal */}
+      {selectedDonghua && (
+        <DonghuaDetailModal
+          item={selectedDonghua}
+          onClose={() => setSelectedDonghua(null)}
+          toggleFavorite={toggleFavorite}
+          isFavorite={isFavorite}
+        />
+      )}
     </section>
   );
 }
