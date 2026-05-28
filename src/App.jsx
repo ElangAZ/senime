@@ -1242,6 +1242,39 @@ function StreamView({ episodeId, triggerToast, saveToHistory, isSamehadaku = fal
   const [animeDetails, setAnimeDetails] = useState(null);
   const [downloadOpen, setDownloadOpen] = useState(false);
   const activeEpisodeRef = useRef(null);
+  const iframeTimeoutRef = useRef(null);
+
+  const startIframeTimeout = (targetServerId, customServers = null) => {
+    if (iframeTimeoutRef.current) {
+      clearTimeout(iframeTimeoutRef.current);
+    }
+    const resolvedServers = customServers || serverList;
+    if (resolvedServers.length > 1) {
+      iframeTimeoutRef.current = setTimeout(() => {
+        handleIframeTimeout(targetServerId, resolvedServers);
+      }, 9500); // 9.5 seconds limit
+    }
+  };
+
+  const handleIframeTimeout = (failedServerId, resolvedServers = null) => {
+    const list = resolvedServers || serverList;
+    const currentIndex = list.findIndex(s => s.serverId === failedServerId);
+    if (currentIndex !== -1 && currentIndex < list.length - 1) {
+      const nextServer = list[currentIndex + 1];
+      triggerToast(`Server saat ini lambat merespon. Mengalihkan ke ${nextServer.title}...`, 'warning');
+      switchServer(nextServer, list);
+    } else if (currentIndex === list.length - 1) {
+      triggerToast('Semua server lambat merespon. Silakan coba ganti server/kualitas secara manual.', 'error');
+    }
+  };
+
+  const handleIframeLoaded = () => {
+    if (iframeTimeoutRef.current) {
+      clearTimeout(iframeTimeoutRef.current);
+      iframeTimeoutRef.current = null;
+      console.log("Iframe loaded successfully, fallback timeout cleared.");
+    }
+  };
 
   useEffect(() => {
     let active = true;
@@ -1289,6 +1322,9 @@ function StreamView({ episodeId, triggerToast, saveToHistory, isSamehadaku = fal
             }));
             setServerList(servers);
             setActiveServer(streams[0].url);
+            
+            // Start timeout tracker for first Animasu server
+            startIframeTimeout(streams[0].url, servers);
           }
 
           // Fetch parent details
@@ -1381,13 +1417,18 @@ function StreamView({ episodeId, triggerToast, saveToHistory, isSamehadaku = fal
                 if (!initialPlayerUrl) {
                   try {
                     console.log(`Auto-switching to first server: ${firstServer.title}`);
+                    startIframeTimeout(firstServer.serverId, activeQualities[0].serverList);
                     const serverRes = await fetchAPI(`/server/${firstServer.serverId}`, isSamehadaku);
                     if (serverRes.data && serverRes.data.url && active) {
                       setPlayerUrl(serverRes.data.url);
                     }
                   } catch (e) {
                     console.warn('Auto server fetch failed:', e.message);
+                    handleIframeTimeout(firstServer.serverId, activeQualities[0].serverList);
                   }
+                } else {
+                  // If we use initialPlayerUrl, still track it based on first server index
+                  startIframeTimeout(firstServer.serverId, activeQualities[0].serverList);
                 }
               }
             }
@@ -1425,21 +1466,28 @@ function StreamView({ episodeId, triggerToast, saveToHistory, isSamehadaku = fal
       }
     };
     loadStreamData();
-    return () => { active = false; };
+    return () => { 
+      active = false; 
+      if (iframeTimeoutRef.current) {
+        clearTimeout(iframeTimeoutRef.current);
+      }
+    };
   }, [episodeId, isSamehadaku, isAnimasu]);
 
   const switchQuality = (q) => {
     setActiveQuality(q.title);
     setServerList(q.serverList || []);
     if (q.serverList && q.serverList.length > 0) {
-      switchServer(q.serverList[0]);
+      switchServer(q.serverList[0], q.serverList);
     }
   };
 
-  const switchServer = async (server) => {
+  const switchServer = async (server, customServers = null) => {
     setActiveServer(server.serverId);
     setPlayerUrl('about:blank');
     triggerToast(`Menghubungkan ke server ${server.title}...`);
+    startIframeTimeout(server.serverId, customServers);
+    
     if (isAnimasu) {
       setPlayerUrl(server.url);
       return;
@@ -1454,6 +1502,7 @@ function StreamView({ episodeId, triggerToast, saveToHistory, isSamehadaku = fal
     } catch (e) {
       console.error('Server change error:', e);
       triggerToast('Gagal memuat stream dari server ini. Silakan coba server lain.', 'error');
+      handleIframeTimeout(server.serverId, customServers);
     }
   };
 
@@ -1487,6 +1536,7 @@ function StreamView({ episodeId, triggerToast, saveToHistory, isSamehadaku = fal
                 frameBorder="0" 
                 allowFullScreen
                 title={stream.title}
+                onLoad={handleIframeLoaded}
               ></iframe>
             </div>
             
