@@ -46,6 +46,7 @@ class ErrorBoundary extends React.Component {
 export { ErrorBoundary };
 
 const API_BASE = 'https://www.sankavollerei.com/anime';
+let globalAnimeSource = localStorage.getItem('nekowatch_anime_source') || 'otakudesu';
 
 // Genres list from index.html
 const GENRES_LIST = [
@@ -73,13 +74,18 @@ const GENRES_LIST = [
 
 // Fetch API with automated multi-proxy fallback
 async function fetchAPI(endpoint) {
-  const url = `${API_BASE}${endpoint}`;
+  // Automatically prefix endpoint if using Samehadaku
+  let finalEndpoint = endpoint;
+  if (globalAnimeSource === 'samehadaku' && !endpoint.startsWith('/samehadaku')) {
+    finalEndpoint = `/samehadaku${endpoint}`;
+  }
+  const url = `${API_BASE}${finalEndpoint}`;
   const requestStrategies = [];
   
   if (window.location.protocol.startsWith('http')) {
     requestStrategies.push({
       name: 'Local/Vercel Proxy Server',
-      urlFn: () => `/api${endpoint}`
+      urlFn: () => `/api${finalEndpoint}`
     });
   }
   
@@ -102,7 +108,7 @@ async function fetchAPI(endpoint) {
   
   for (const strategy of requestStrategies) {
     try {
-      console.log(`Trying ${strategy.name} for: ${endpoint}`);
+      console.log(`Trying ${strategy.name} for: ${finalEndpoint}`);
       const finalUrl = strategy.urlFn(url);
       
       const controller = new AbortController();
@@ -214,16 +220,17 @@ function getSeriesSlug(item) {
 
 // Helper to extract just the episode number from an episode title
 function extractEpisodeNumber(title) {
-  if (!title) return '';
+  if (title === undefined || title === null) return '';
+  const titleStr = String(title);
   const epRegex = /(?:Episode|Ep\.?|Eps\.?)\s*(\d+(\.\d+)?)/i;
-  const match = title.match(epRegex);
+  const match = titleStr.match(epRegex);
   if (match) return match[1];
   
-  const numbers = title.match(/\d+(\.\d+)?/g);
+  const numbers = titleStr.match(/\d+(\.\d+)?/g);
   if (numbers && numbers.length > 0) {
     return numbers[numbers.length - 1];
   }
-  return title;
+  return titleStr;
 }
 
 export default function App() {
@@ -278,6 +285,23 @@ export default function App() {
   const triggerToast = (message, type = 'success') => {
     setToast({ message, type });
     setTimeout(() => setToast(null), 3000);
+  };
+
+  const [animeSource, setAnimeSourceState] = useState(() => {
+    const stored = localStorage.getItem('nekowatch_anime_source') || 'otakudesu';
+    globalAnimeSource = stored;
+    return stored;
+  });
+
+  const setAnimeSource = (src) => {
+    localStorage.setItem('nekowatch_anime_source', src);
+    globalAnimeSource = src;
+    setAnimeSourceState(src);
+    triggerToast(`Sumber anime diubah ke ${src === 'otakudesu' ? 'Otakudesu' : 'Samehadaku'}!`, 'success');
+    window.location.hash = '#/';
+    setTimeout(() => {
+      window.location.reload();
+    }, 300);
   };
 
   const toggleFavorite = (item, isDonghua = false) => {
@@ -469,6 +493,17 @@ export default function App() {
             </a>
           </nav>
 
+          <div className="source-selector">
+            <button 
+              onClick={() => setAnimeSource(animeSource === 'otakudesu' ? 'samehadaku' : 'otakudesu')}
+              className="source-toggle-btn"
+              title="Ganti Sumber Anime (Otakudesu / Samehadaku)"
+            >
+              <Tv size={14} style={{ color: 'var(--accent)' }} />
+              <span><span>Sumber: </span><strong>{animeSource === 'otakudesu' ? 'Otakudesu' : 'Samehadaku'}</strong></span>
+            </button>
+          </div>
+
           <div className="search-box">
             <form id="search-form" onSubmit={handleSearchSubmit}>
               <input 
@@ -593,8 +628,9 @@ function AnimeGrid({ list, limit, toggleFavorite, isFavorite }) {
         const isDh = anime.type === 'Donghua' || anime.isDonghua || anime.href?.includes('/donghua/');
         const targetHref = isDh ? `#/donghua-detail/${animeId}` : `#/anime/${animeId}`;
         const epsBadge = anime.episodes ? <div className="card-badge">{anime.episodes} Eps</div> : null;
-        const scoreBadge = anime.score && anime.score !== '0' && anime.score !== '0.00' ? (
-          <div className="card-score"><Star size={10} fill="var(--star)" color="var(--star)" /> {anime.score}</div>
+        const scoreVal = typeof anime.score === 'object' ? anime.score.value : anime.score;
+        const scoreBadge = scoreVal && scoreVal !== '0' && scoreVal !== '0.00' ? (
+          <div className="card-score"><Star size={10} fill="var(--star)" color="var(--star)" /> {scoreVal}</div>
         ) : null;
         const releaseTag = anime.releaseDay ? <div className="card-release-tag">{anime.releaseDay}</div> : null;
         const favorited = isFavorite && isFavorite(animeId);
@@ -768,7 +804,7 @@ function HomeView({ historyItems, clearHistory, triggerToast, toggleFavorite, is
             <div className="hero-overlay"></div>
             <div className="hero-content">
               <div className="hero-poster-wrapper">
-                <img className="hero-poster" src={spotlight.poster} alt={spotlight.title} />
+                <img className="hero-poster" src={spotlight.poster} alt={spotlight.title || spotlight.english || spotlight.japanese} />
               </div>
               <div className="hero-info">
                 <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
@@ -777,10 +813,10 @@ function HomeView({ historyItems, clearHistory, triggerToast, toggleFavorite, is
                     <span key={g.genreId} className="hero-badge">{g.title}</span>
                   ))}
                 </div>
-                <h1 className="hero-title">{spotlight.title}</h1>
+                <h1 className="hero-title">{spotlight.title || spotlight.english || spotlight.japanese}</h1>
                 <div className="hero-meta">
                   <span className="hero-meta-item score">
-                    <Star size={12} fill="var(--star)" color="var(--star)" /> {spotlight.score || '0.0'}
+                    <Star size={12} fill="var(--star)" color="var(--star)" /> {typeof spotlight.score === 'object' ? spotlight.score.value : (spotlight.score || '0.0')}
                   </span>
                   <span className="hero-meta-item"><Tv size={12} /> {spotlight.type || 'TV'}</span>
                   {spotlight.releaseDay && (
@@ -976,13 +1012,13 @@ function DetailView({ animeId, triggerToast, saveToHistory, toggleFavorite, isFa
         {/* Detail Main Info */}
         <div className="detail-main">
           <div className="detail-poster-container">
-            <img id="detail-poster" src={detail.poster} alt={detail.title} />
+            <img id="detail-poster" src={detail.poster} alt={detail.title || detail.english || detail.japanese} />
             <div className="detail-score">
-              <Star size={12} fill="var(--star)" color="var(--star)" /> <span>{detail.score || '-'}</span>
+              <Star size={12} fill="var(--star)" color="var(--star)" /> <span>{typeof detail.score === 'object' ? detail.score.value : (detail.score || '-')}</span>
             </div>
           </div>
           <div className="detail-info-content">
-            <h1 className="detail-title">{detail.title}</h1>
+            <h1 className="detail-title">{detail.title || detail.english || detail.japanese}</h1>
             {detail.japanese && <h2 className="detail-japanese">{detail.japanese}</h2>}
             
             <div className="detail-meta-tags">
@@ -1059,7 +1095,7 @@ function DetailView({ animeId, triggerToast, saveToHistory, toggleFavorite, isFa
                     href={`#/episode/${ep.episodeId}`} 
                     className="episode-card numeric-card"
                     title={`${ep.title} (${ep.date || 'Rilis'})`}
-                    onClick={() => saveToHistory(animeId, detail.title, detail.poster, ep.episodeId, ep.title)}
+                    onClick={() => saveToHistory(animeId, detail.title || detail.english || detail.japanese, detail.poster, ep.episodeId, ep.title)}
                   >
                     <span>{epNum}</span>
                   </a>
@@ -1133,7 +1169,7 @@ function StreamView({ episodeId, triggerToast, saveToHistory }) {
             const detailRes = await fetchAPI(`/anime/${data.animeId}`);
             if (detailRes.data && active) {
               setAnimeDetails(detailRes.data);
-              saveToHistory(data.animeId, detailRes.data.title, detailRes.data.poster, episodeId, data.title);
+              saveToHistory(data.animeId, detailRes.data.title || detailRes.data.english || detailRes.data.japanese, detailRes.data.poster, episodeId, data.title);
             }
           } catch (e) {
             console.warn('Mini info fetch failed:', e.message);
