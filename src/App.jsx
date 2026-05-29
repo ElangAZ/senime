@@ -440,14 +440,17 @@ function LoginView({ onLogin, triggerToast }) {
         <DarkVeil speed={0.4} warpAmount={0.06} noiseIntensity={0.01} resolutionScale={0.75} />
       </div>
       <div className="login-card">
-        {/* Settings button to customize Supabase connection directly */}
-        <button 
-          className="btn-supabase-settings" 
-          onClick={() => setShowConfig(true)}
-          title="Ubah Konfigurasi Supabase"
-        >
-          ⚙️
-        </button>
+        {/* Settings button is only visible to the developer in local development mode */}
+        {import.meta.env.DEV && (
+          <button 
+            className="btn-supabase-settings" 
+            onClick={() => setShowConfig(true)}
+            title="Ubah Konfigurasi Supabase"
+          >
+            ⚙️
+          </button>
+        )}
+
 
         <div className="login-logo">
           <Play className="logo-icon animate-pulse" fill="currentColor" size={28} />
