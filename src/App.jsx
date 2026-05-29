@@ -6,6 +6,14 @@ import {
   User, Video, X, Loader2, Square, AlertCircle, CheckCircle2,
   History, ArrowUpDown, PlaySquare, Heart
 } from 'lucide-react';
+import DarkVeil from './DarkVeil';
+import { 
+  supabase, 
+  isSupabaseConfigured, 
+  getSupabaseCredentials, 
+  saveSupabaseCredentials, 
+  clearSupabaseCredentials 
+} from './supabase';
 
 // Error Boundary to prevent full black screen on render crash
 class ErrorBoundary extends React.Component {
@@ -44,6 +52,8 @@ class ErrorBoundary extends React.Component {
 }
 
 export { ErrorBoundary };
+
+
 
 const API_BASE = 'https://www.sankavollerei.com/anime';
 let globalAnimeSource = localStorage.getItem('nekowatch_anime_source') || 'otakudesu';
@@ -229,6 +239,280 @@ function getAnimasuSeriesSlug(episodeSlug) {
   return slug;
 }
 
+// Premium LoginView with Glassmorphism and Google Sign-in simulation
+function LoginView({ onLogin, triggerToast }) {
+  const [isRegister, setIsRegister] = useState(false);
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+
+  // Supabase Configuration States
+  const [configured, setConfigured] = useState(isSupabaseConfigured());
+  const [showConfig, setShowConfig] = useState(!isSupabaseConfigured());
+  const [supabaseUrlInput, setSupabaseUrlInput] = useState(getSupabaseCredentials().url);
+  const [supabaseKeyInput, setSupabaseKeyInput] = useState(getSupabaseCredentials().key);
+
+  const handleManualSubmit = async (e) => {
+    e.preventDefault();
+    if (!username.trim() || !password.trim()) {
+      triggerToast('Mohon isi semua kolom!', 'error');
+      return;
+    }
+
+    if (!isSupabaseConfigured()) {
+      triggerToast('Database Supabase belum terhubung!', 'error');
+      setShowConfig(true);
+      return;
+    }
+
+    const email = username.trim().includes('@') ? username.trim() : `${username.trim()}@senime.member`;
+
+    if (isRegister) {
+      if (password !== confirmPassword) {
+        triggerToast('Konfirmasi password tidak cocok!', 'error');
+        return;
+      }
+      
+      triggerToast('Sedang mendaftarkan akun...', 'success');
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password: password.trim(),
+        options: {
+          data: {
+            display_name: username.trim().split('@')[0],
+            avatar_color: `hsl(${Math.floor(Math.random() * 360)}, 70%, 60%)`,
+            avatar_letter: username.trim().charAt(0).toUpperCase()
+          }
+        }
+      });
+
+      if (error) {
+        triggerToast(error.message, 'error');
+      } else {
+        triggerToast('Pendaftaran berhasil! Silakan masuk.', 'success');
+        setIsRegister(false);
+        setPassword('');
+        setConfirmPassword('');
+      }
+    } else {
+      triggerToast('Sedang masuk...', 'success');
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password: password.trim()
+      });
+
+      if (error) {
+        triggerToast(error.message, 'error');
+      } else {
+        const sessionUser = data.user;
+        const profileUser = {
+          username: sessionUser.user_metadata?.display_name || sessionUser.email.split('@')[0],
+          email: sessionUser.email,
+          avatarColor: sessionUser.user_metadata?.avatar_color || `hsl(${Math.floor(Math.random() * 360)}, 70%, 60%)`,
+          avatarLetter: (sessionUser.user_metadata?.avatar_letter || sessionUser.email.charAt(0)).toUpperCase(),
+          id: sessionUser.id
+        };
+        triggerToast(`Selamat datang kembali, ${profileUser.username}!`, 'success');
+        onLogin(profileUser);
+      }
+    }
+  };
+
+  const handleGoogleClick = async () => {
+    if (!isSupabaseConfigured()) {
+      triggerToast('Database Supabase belum terhubung!', 'error');
+      setShowConfig(true);
+      return;
+    }
+
+    triggerToast('Mengalihkan ke Google Sign-In...', 'success');
+    const { data, error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: window.location.origin
+      }
+    });
+
+    if (error) {
+      triggerToast(error.message, 'error');
+    }
+  };
+
+  if (showConfig) {
+    return (
+      <div className="login-overlay">
+        <div className="login-darkveil-container">
+          <DarkVeil speed={0.4} warpAmount={0.06} noiseIntensity={0.01} resolutionScale={0.75} />
+        </div>
+        <div className="login-card">
+          <div className="login-logo">
+            <Play className="logo-icon animate-pulse" fill="currentColor" size={28} />
+            <span className="logo-text">Se<span>nime</span></span>
+          </div>
+          <p className="login-tagline">Hubungkan ke Database Supabase Anda</p>
+          
+          <div className="supabase-config-info">
+            <span className="supa-badge">SUPABASE INTEGRATION</span>
+            <p className="supa-desc">Gunakan database Supabase Auth Anda untuk login &amp; pendaftaran pengguna secara real-time.</p>
+          </div>
+
+          <form onSubmit={(e) => {
+            e.preventDefault();
+            if (!supabaseUrlInput.trim() || !supabaseKeyInput.trim()) {
+              triggerToast('Silakan lengkapi URL dan Anon Key Supabase!', 'error');
+              return;
+            }
+            saveSupabaseCredentials(supabaseUrlInput, supabaseKeyInput);
+            triggerToast('Supabase terhubung! Me-refresh aplikasi...', 'success');
+            setConfigured(true);
+            setShowConfig(false);
+          }} className="login-form">
+            <div className="input-group">
+              <span className="input-icon"><Play size={16} /></span>
+              <input 
+                type="text" 
+                placeholder="Supabase URL (https://your-proj.supabase.co)"
+                value={supabaseUrlInput}
+                onChange={(e) => setSupabaseUrlInput(e.target.value)}
+                required
+              />
+            </div>
+
+            <div className="input-group">
+              <span className="input-icon"><Hash size={16} /></span>
+              <input 
+                type="password" 
+                placeholder="Supabase Anon Key"
+                value={supabaseKeyInput}
+                onChange={(e) => setSupabaseKeyInput(e.target.value)}
+                required
+              />
+            </div>
+
+            <button type="submit" className="btn-login-submit" style={{ background: 'linear-gradient(135deg, #3ecf8e, #10b981)' }}>
+              Simpan &amp; Hubungkan Database ⚡
+            </button>
+          </form>
+
+          {configured && (
+            <button className="btn-google" style={{ marginTop: '12px' }} onClick={() => setShowConfig(false)}>
+              Kembali ke Login
+            </button>
+          )}
+
+          <p className="login-footer" style={{ marginTop: '20px' }}>
+            Atau masukkan variabel <code>VITE_SUPABASE_URL</code> &amp; <code>VITE_SUPABASE_ANON_KEY</code> di file <code>.env</code>
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="login-overlay">
+      <div className="login-darkveil-container">
+        <DarkVeil speed={0.4} warpAmount={0.06} noiseIntensity={0.01} resolutionScale={0.75} />
+      </div>
+      <div className="login-card">
+        {/* Settings button to customize Supabase connection directly */}
+        <button 
+          className="btn-supabase-settings" 
+          onClick={() => setShowConfig(true)}
+          title="Ubah Konfigurasi Supabase"
+        >
+          ⚙️
+        </button>
+
+        <div className="login-logo">
+          <Play className="logo-icon animate-pulse" fill="currentColor" size={28} />
+          <span className="logo-text">Se<span>nime</span></span>
+        </div>
+        
+        <div className="supabase-status-pill" onClick={() => setShowConfig(true)}>
+          <span className="pulse-dot">⚡</span>
+          <span>Supabase Connected</span>
+        </div>
+
+        <p className="login-tagline">Gerbang Hiburan Nonton Anime &amp; Donghua Terlengkap</p>
+
+        <div className="login-tabs">
+          <button 
+            className={`login-tab ${!isRegister ? 'active' : ''}`} 
+            onClick={() => { setIsRegister(false); setUsername(''); setPassword(''); }}
+          >
+            Masuk
+          </button>
+          <button 
+            className={`login-tab ${isRegister ? 'active' : ''}`} 
+            onClick={() => { setIsRegister(true); setUsername(''); setPassword(''); }}
+          >
+            Daftar
+          </button>
+        </div>
+
+        <form onSubmit={handleManualSubmit} className="login-form">
+          <div className="input-group">
+            <span className="input-icon"><User size={18} /></span>
+            <input 
+              type="text" 
+              placeholder={isRegister ? "Buat Username / Email" : "Username atau Email"}
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              required
+            />
+          </div>
+
+          <div className="input-group">
+            <span className="input-icon"><CheckSquare size={18} /></span>
+            <input 
+              type="password" 
+              placeholder={isRegister ? "Buat Password" : "Password Anda"}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+            />
+          </div>
+
+          {isRegister && (
+            <div className="input-group">
+              <span className="input-icon"><CheckSquare size={18} /></span>
+              <input 
+                type="password" 
+                placeholder="Ulangi Password"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                required
+              />
+            </div>
+          )}
+
+          <button type="submit" className="btn-login-submit">
+            {isRegister ? 'Daftar Sekarang' : 'Masuk ke Senime'}
+          </button>
+        </form>
+
+        <div className="login-divider">
+          <span>atau masuk dengan</span>
+        </div>
+
+        <button onClick={handleGoogleClick} className="btn-google">
+          <svg className="google-logo-svg" viewBox="0 0 24 24" width="18" height="18">
+            <path fill="#EA4335" d="M12 5.04c1.66 0 3.2.57 4.38 1.69l3.27-3.27C17.68 1.54 14.98 1 12 1 7.35 1 3.37 3.68 1.34 7.62l3.85 2.99C6.12 7.15 8.82 5.04 12 5.04z"/>
+            <path fill="#4285F4" d="M23.49 12.27c0-.81-.07-1.59-.2-2.36H12v4.51h6.46c-.29 1.48-1.14 2.73-2.4 3.58l3.73 2.89c2.18-2.01 3.7-4.99 3.7-8.62z"/>
+            <path fill="#FBBC05" d="M5.19 14.37c-.25-.76-.39-1.57-.39-2.41s.14-1.65.39-2.41L1.34 6.56C.49 8.2.01 10.04.01 12s.48 3.8 1.33 5.44l3.85-3.07z"/>
+            <path fill="#34A853" d="M12 23c3.24 0 5.97-1.07 7.96-2.91l-3.73-2.89c-1.03.69-2.35 1.1-4.23 1.1-3.18 0-5.88-2.11-6.84-5.57L1.31 15.8C3.34 19.74 7.32 23 12 23z"/>
+          </svg>
+          <span>Masuk dengan Google</span>
+        </button>
+
+        <p className="login-footer">&copy; {new Date().getFullYear()} Senime &bull; Premium Stream Portal</p>
+      </div>
+
+
+    </div>
+  );
+}
+
 // Helper to extract just the episode number from an episode title
 function extractEpisodeNumber(title) {
   if (title === undefined || title === null) return '';
@@ -256,14 +540,89 @@ export default function App() {
     return JSON.parse(localStorage.getItem('nekowatch_favorites')) || [];
   });
   
-  // Ref for autocomplete suggestions close on click outside
+  // User session state
+  const [user, setUser] = useState(() => {
+    return JSON.parse(localStorage.getItem('senime_user')) || null;
+  });
+  const [profileOpen, setProfileOpen] = useState(false);
+
+
+
+  // Ref for autocomplete suggestions and profile dropdown close on click outside
   const searchInputRef = useRef(null);
   const suggestionsRef = useRef(null);
+  const profileRef = useRef(null);
 
-  // Load history on mount
+  // Load history & supabase session on mount
   useEffect(() => {
+    // 1. Migrate older local history entries that belong to Donghua
     const stored = JSON.parse(localStorage.getItem('nekowatch_history')) || [];
-    setHistoryItems(stored);
+    let migrated = false;
+    const updated = stored.map(item => {
+      const donghuaKeywords = [
+        'perfect-world', 'renegade-immortal', 'against-the-gods', 'stellar-transformation', 'senior-brother', 
+        'donghua', 'btth', 'shrouding-the-heavens', 'soul-land', 'martial-universe', 'apotheosis', 
+        'perfect world', 'renegade immortal', 'against the gods', 'stellar transformation', 'my senior brother', 
+        'battle through the heavens'
+      ];
+      const isActuallyDonghua = donghuaKeywords.some(keyword => 
+        (item.animeTitle && item.animeTitle.toLowerCase().includes(keyword)) || 
+        (item.animeId && item.animeId.toLowerCase().includes(keyword)) ||
+        (item.episodeId && item.episodeId.toLowerCase().includes(keyword))
+      );
+      if (isActuallyDonghua && !item.isDonghua) {
+        migrated = true;
+        return { ...item, isDonghua: true };
+      }
+      return item;
+    });
+    
+    if (migrated) {
+      localStorage.setItem('nekowatch_history', JSON.stringify(updated));
+      setHistoryItems(updated);
+    } else {
+      setHistoryItems(stored);
+    }
+
+    // 2. Load Supabase Auth Session and subscribe to auth state changes
+    if (isSupabaseConfigured()) {
+      supabase.auth.getSession().then(({ data: { session } }) => {
+        if (session) {
+          const sessionUser = session.user;
+          const profileUser = {
+            username: sessionUser.user_metadata?.display_name || sessionUser.email.split('@')[0],
+            email: sessionUser.email,
+            avatarColor: sessionUser.user_metadata?.avatar_color || `hsl(${Math.floor(Math.random() * 360)}, 70%, 60%)`,
+            avatarLetter: (sessionUser.user_metadata?.avatar_letter || sessionUser.email.charAt(0)).toUpperCase(),
+            id: sessionUser.id
+          };
+          setUser(profileUser);
+          localStorage.setItem('senime_user', JSON.stringify(profileUser));
+        }
+      });
+
+      const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+        if (event === 'SIGNED_OUT') {
+          setUser(null);
+          localStorage.removeItem('senime_user');
+        } else if (session) {
+          const sessionUser = session.user;
+          const profileUser = {
+            username: sessionUser.user_metadata?.display_name || sessionUser.email.split('@')[0],
+            email: sessionUser.email,
+            avatarColor: sessionUser.user_metadata?.avatar_color || `hsl(${Math.floor(Math.random() * 360)}, 70%, 60%)`,
+            avatarLetter: (sessionUser.user_metadata?.avatar_letter || sessionUser.email.charAt(0)).toUpperCase(),
+            id: sessionUser.id
+          };
+          setUser(profileUser);
+          localStorage.setItem('senime_user', JSON.stringify(profileUser));
+        }
+      });
+
+      return () => {
+        subscription.unsubscribe();
+      };
+    }
 
     const handleHashChange = () => {
       setRoute(window.location.hash || '#/');
@@ -274,7 +633,7 @@ export default function App() {
 
     window.addEventListener('hashchange', handleHashChange);
     
-    // Autocomplete click outside handler
+    // Autocomplete & Profile click outside handler
     const handleClickOutside = (e) => {
       if (
         searchInputRef.current && 
@@ -283,6 +642,12 @@ export default function App() {
         !suggestionsRef.current.contains(e.target)
       ) {
         setShowSuggestions(false);
+      }
+      if (
+        profileRef.current &&
+        !profileRef.current.contains(e.target)
+      ) {
+        setProfileOpen(false);
       }
     };
     document.addEventListener('click', handleClickOutside);
@@ -415,7 +780,7 @@ export default function App() {
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
-  const saveToHistory = (animeId, animeTitle, poster, episodeId, episodeTitle, isSamehadaku = false, isAnimasu = false) => {
+  const saveToHistory = (animeId, animeTitle, poster, episodeId, episodeTitle, isSamehadaku = false, isAnimasu = false, isDonghua = false) => {
     const stored = JSON.parse(localStorage.getItem('nekowatch_history')) || [];
     const filtered = stored.filter(item => item.animeId !== animeId);
     filtered.unshift({
@@ -426,6 +791,7 @@ export default function App() {
       episodeTitle,
       isSamehadaku,
       isAnimasu,
+      isDonghua,
       timestamp: Date.now()
     });
     if (filtered.length > 12) filtered.pop();
@@ -507,6 +873,29 @@ export default function App() {
       return <HomeView historyItems={historyItems} clearHistory={clearHistory} triggerToast={triggerToast} toggleFavorite={toggleFavorite} isFavorite={isFavorite} />;
     }
   };
+
+  // Lockout logic rendering LoginView if no active session
+  if (!user) {
+    return (
+      <ErrorBoundary>
+        <LoginView 
+          onLogin={(userData) => {
+            setUser(userData);
+            localStorage.setItem('senime_user', JSON.stringify(userData));
+          }} 
+          triggerToast={triggerToast} 
+        />
+        {toast && (
+          <div className="toast-container">
+            <div className={`toast show ${toast.type}`}>
+              {toast.type === 'success' ? <CheckCircle2 size={16} /> : <AlertCircle size={16} />}
+              <span>{toast.message}</span>
+            </div>
+          </div>
+        )}
+      </ErrorBoundary>
+    );
+  }
 
   return (
     <>
@@ -597,6 +986,40 @@ export default function App() {
               </div>
             )}
           </div>
+
+
+
+          {user && (
+            <div className="profile-dropdown-container" ref={profileRef}>
+              <button 
+                className="header-avatar-btn" 
+                onClick={() => setProfileOpen(!profileOpen)} 
+                style={{ backgroundColor: user.avatarColor }}
+                title={`${user.username} - Akun`}
+              >
+                {user.avatarLetter}
+              </button>
+              {profileOpen && (
+                <div className="profile-dropdown-menu">
+                  <div className="profile-menu-header">
+                    <h4>{user.username}</h4>
+                    {user.email && <p>{user.email}</p>}
+                  </div>
+                  <button className="profile-menu-item logout-btn" onClick={async () => {
+                    if (isSupabaseConfigured()) {
+                      await supabase.auth.signOut();
+                    }
+                    setUser(null);
+                    setProfileOpen(false);
+                    localStorage.removeItem('senime_user');
+                    triggerToast('Berhasil keluar akun.', 'success');
+                  }}>
+                    Keluar (Log Out)
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </header>
 
@@ -643,6 +1066,8 @@ export default function App() {
           </div>
         </div>
       )}
+
+
 
       {/* Toast Notification */}
       {toast && (
@@ -701,19 +1126,7 @@ function AnimeGrid({ list, limit, toggleFavorite, isFavorite }) {
               {epsBadge}
               {scoreBadge}
               {releaseTag}
-              {toggleFavorite && isFavorite && (
-                <button
-                  className={`quick-favorite-btn ${favorited ? 'active' : ''}`}
-                  onClick={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    toggleFavorite(anime, isDh, isSamehadaku, isAnimasu);
-                  }}
-                  title={favorited ? "Hapus dari Favorit" : "Tambah ke Favorit"}
-                >
-                  <Heart size={14} fill={favorited ? "var(--pink)" : "none"} color={favorited ? "var(--pink)" : "currentColor"} />
-                </button>
-              )}
+
             </div>
             <a href={targetHref}>
               <div className="card-body">
@@ -920,7 +1333,9 @@ function HomeView({ historyItems, clearHistory, triggerToast, toggleFavorite, is
                 ? `#/episode/samehadaku/${item.episodeId}` 
                 : item.isAnimasu 
                   ? `#/episode/animasu/${item.episodeId}` 
-                  : `#/episode/${item.episodeId}`;
+                  : item.isDonghua
+                    ? `#/donghua-episode/${item.episodeId}`
+                    : `#/episode/${item.episodeId}`;
               return (
                 <div key={item.animeId} className="anime-card">
                   <a href={targetHref}>
@@ -932,8 +1347,8 @@ function HomeView({ historyItems, clearHistory, triggerToast, toggleFavorite, is
                     <div className="card-body">
                       <h3 className="card-title">{item.animeTitle}</h3>
                       <div className="card-meta">
-                        <span className={`card-source-pill ${item.isSamehadaku ? 'samehadaku' : item.isAnimasu ? 'animasu' : 'otakudesu'}`}>
-                          {item.isSamehadaku ? 'Samehadaku' : item.isAnimasu ? 'Animasu' : 'Otakudesu'}
+                        <span className={`card-source-pill ${item.isSamehadaku ? 'samehadaku' : item.isAnimasu ? 'animasu' : item.isDonghua ? 'samehadaku' : 'otakudesu'}`}>
+                          {item.isSamehadaku ? 'Samehadaku' : item.isAnimasu ? 'Animasu' : item.isDonghua ? 'Donghua' : 'Otakudesu'}
                         </span>
                         <span style={{ fontSize: '10px' }}>{new Date(item.timestamp).toLocaleDateString('id-ID')}</span>
                       </div>
@@ -1252,7 +1667,7 @@ function StreamView({ episodeId, triggerToast, saveToHistory, isSamehadaku = fal
     if (resolvedServers.length > 1) {
       iframeTimeoutRef.current = setTimeout(() => {
         handleIframeTimeout(targetServerId, resolvedServers);
-      }, 5000); // 5 seconds limit
+      }, 3000); // 5 seconds limit
     }
   };
 
@@ -1757,19 +2172,7 @@ function DonghuaGrid({ list, onCardClick, toggleFavorite, isFavorite }) {
                     {norm.status}
                   </div>
                 )}
-                {toggleFavorite && isFavorite && (
-                  <button
-                    className={`quick-favorite-btn ${favorited ? 'active' : ''}`}
-                    onClick={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      toggleFavorite({ ...item, slug: norm.animeId }, true);
-                    }}
-                    title={favorited ? "Hapus dari Favorit" : "Tambah ke Favorit"}
-                  >
-                    <Heart size={14} fill={favorited ? "var(--pink)" : "none"} color={favorited ? "var(--pink)" : "currentColor"} />
-                  </button>
-                )}
+
                 <div className="dh-card-play-overlay">
                   <Play size={28} fill="white" color="white" />
                 </div>
@@ -2135,7 +2538,10 @@ function DonghuaStreamView({ episodeSlug, triggerToast, saveToHistory }) {
             data.donghua_details.title || data.episode,
             data.donghua_details.poster || '',
             episodeSlug,
-            data.episode
+            data.episode,
+            false,
+            false,
+            true
           );
         }
 
