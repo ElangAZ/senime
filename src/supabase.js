@@ -1,8 +1,17 @@
 import { createClient } from '@supabase/supabase-js';
 
-// Retrieve credentials from environment variables or fallback to localStorage
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || localStorage.getItem('senime_supabase_url') || '';
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || localStorage.getItem('senime_supabase_anon_key') || '';
+// Safe localStorage helper to prevent crashes in private windows / strict browsers
+const getSafeLocalStorage = (key) => {
+  try {
+    return localStorage.getItem(key) || '';
+  } catch (e) {
+    console.warn("Storage access blocked:", e);
+    return '';
+  }
+};
+
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || getSafeLocalStorage('senime_supabase_url') || '';
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || getSafeLocalStorage('senime_supabase_anon_key') || '';
 
 export const isSupabaseConfigured = () => {
   return supabaseUrl.trim() !== '' && supabaseAnonKey.trim() !== '';
@@ -10,24 +19,32 @@ export const isSupabaseConfigured = () => {
 
 export const getSupabaseCredentials = () => {
   return {
-    url: supabaseUrl || localStorage.getItem('senime_supabase_url') || '',
-    key: supabaseAnonKey || localStorage.getItem('senime_supabase_anon_key') || ''
+    url: supabaseUrl || getSafeLocalStorage('senime_supabase_url') || '',
+    key: supabaseAnonKey || getSafeLocalStorage('senime_supabase_anon_key') || ''
   };
 };
 
 export const saveSupabaseCredentials = (url, key) => {
-  localStorage.setItem('senime_supabase_url', url.trim());
-  localStorage.setItem('senime_supabase_anon_key', key.trim());
+  try {
+    localStorage.setItem('senime_supabase_url', url.trim());
+    localStorage.setItem('senime_supabase_anon_key', key.trim());
+  } catch (e) {
+    console.error("Failed to save credentials to localStorage:", e);
+  }
   window.location.reload();
 };
 
 export const clearSupabaseCredentials = () => {
-  localStorage.removeItem('senime_supabase_url');
-  localStorage.removeItem('senime_supabase_anon_key');
+  try {
+    localStorage.removeItem('senime_supabase_url');
+    localStorage.removeItem('senime_supabase_anon_key');
+  } catch (e) {
+    console.error("Failed to clear credentials from localStorage:", e);
+  }
   window.location.reload();
 };
 
-// Initialize client (even with empty credentials to avoid crashing, but auth will check isSupabaseConfigured())
+// Initialize client
 export const supabase = createClient(
   supabaseUrl || 'https://placeholder-project.supabase.co',
   supabaseAnonKey || 'placeholder-anon-key'

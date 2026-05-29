@@ -55,8 +55,34 @@ export { ErrorBoundary };
 
 
 
+// Safe Storage Helpers to prevent crashes in private windows / strict browsers
+const safeStorage = {
+  getItem: (key, defaultValue = '') => {
+    try {
+      return localStorage.getItem(key) || defaultValue;
+    } catch (e) {
+      console.warn("Storage.getItem failed for key:", key, e);
+      return defaultValue;
+    }
+  },
+  setItem: (key, value) => {
+    try {
+      localStorage.setItem(key, value);
+    } catch (e) {
+      console.warn("Storage.setItem failed for key:", key, e);
+    }
+  },
+  removeItem: (key) => {
+    try {
+      localStorage.removeItem(key);
+    } catch (e) {
+      console.warn("Storage.removeItem failed for key:", key, e);
+    }
+  }
+};
+
 const API_BASE = 'https://www.sankavollerei.com/anime';
-let globalAnimeSource = localStorage.getItem('nekowatch_anime_source') || 'otakudesu';
+let globalAnimeSource = safeStorage.getItem('nekowatch_anime_source', 'otakudesu');
 
 // Genres list from index.html
 const GENRES_LIST = [
@@ -537,12 +563,22 @@ export default function App() {
   const [historyItems, setHistoryItems] = useState([]);
   const [toast, setToast] = useState(null);
   const [favorites, setFavorites] = useState(() => {
-    return JSON.parse(localStorage.getItem('nekowatch_favorites')) || [];
+    try {
+      const stored = safeStorage.getItem('nekowatch_favorites');
+      return stored ? JSON.parse(stored) : [];
+    } catch (e) {
+      return [];
+    }
   });
   
   // User session state
   const [user, setUser] = useState(() => {
-    return JSON.parse(localStorage.getItem('senime_user')) || null;
+    try {
+      const stored = safeStorage.getItem('senime_user');
+      return stored ? JSON.parse(stored) : null;
+    } catch (e) {
+      return null;
+    }
   });
   const [profileOpen, setProfileOpen] = useState(false);
 
@@ -556,7 +592,7 @@ export default function App() {
   // Load history & supabase session on mount
   useEffect(() => {
     // 1. Migrate older local history entries that belong to Donghua
-    const stored = JSON.parse(localStorage.getItem('nekowatch_history')) || [];
+    const stored = JSON.parse(safeStorage.getItem('nekowatch_history', '[]')) || [];
     let migrated = false;
     const updated = stored.map(item => {
       const donghuaKeywords = [
@@ -578,7 +614,7 @@ export default function App() {
     });
     
     if (migrated) {
-      localStorage.setItem('nekowatch_history', JSON.stringify(updated));
+      safeStorage.setItem('nekowatch_history', JSON.stringify(updated));
       setHistoryItems(updated);
     } else {
       setHistoryItems(stored);
@@ -597,14 +633,14 @@ export default function App() {
             id: sessionUser.id
           };
           setUser(profileUser);
-          localStorage.setItem('senime_user', JSON.stringify(profileUser));
+          safeStorage.setItem('senime_user', JSON.stringify(profileUser));
         }
       });
 
       const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
         if (event === 'SIGNED_OUT') {
           setUser(null);
-          localStorage.removeItem('senime_user');
+          safeStorage.removeItem('senime_user');
         } else if (session) {
           const sessionUser = session.user;
           const profileUser = {
@@ -615,7 +651,7 @@ export default function App() {
             id: sessionUser.id
           };
           setUser(profileUser);
-          localStorage.setItem('senime_user', JSON.stringify(profileUser));
+          safeStorage.setItem('senime_user', JSON.stringify(profileUser));
         }
       });
 
@@ -686,7 +722,7 @@ export default function App() {
         }];
         triggerToast(`Ditambahkan ke Favorit!`, 'success');
       }
-      localStorage.setItem('nekowatch_favorites', JSON.stringify(updated));
+      safeStorage.setItem('nekowatch_favorites', JSON.stringify(updated));
       return updated;
     });
   };
@@ -781,7 +817,7 @@ export default function App() {
   }, [searchQuery]);
 
   const saveToHistory = (animeId, animeTitle, poster, episodeId, episodeTitle, isSamehadaku = false, isAnimasu = false, isDonghua = false) => {
-    const stored = JSON.parse(localStorage.getItem('nekowatch_history')) || [];
+    const stored = JSON.parse(safeStorage.getItem('nekowatch_history', '[]')) || [];
     const filtered = stored.filter(item => item.animeId !== animeId);
     filtered.unshift({
       animeId,
@@ -796,12 +832,12 @@ export default function App() {
     });
     if (filtered.length > 12) filtered.pop();
     
-    localStorage.setItem('nekowatch_history', JSON.stringify(filtered));
+    safeStorage.setItem('nekowatch_history', JSON.stringify(filtered));
     setHistoryItems(filtered);
   };
 
   const clearHistory = () => {
-    localStorage.removeItem('nekowatch_history');
+    safeStorage.removeItem('nekowatch_history');
     setHistoryItems([]);
     triggerToast('Riwayat menonton telah dihapus.');
   };
@@ -881,7 +917,7 @@ export default function App() {
         <LoginView 
           onLogin={(userData) => {
             setUser(userData);
-            localStorage.setItem('senime_user', JSON.stringify(userData));
+            safeStorage.setItem('senime_user', JSON.stringify(userData));
           }} 
           triggerToast={triggerToast} 
         />
@@ -1011,7 +1047,7 @@ export default function App() {
                     }
                     setUser(null);
                     setProfileOpen(false);
-                    localStorage.removeItem('senime_user');
+                    safeStorage.removeItem('senime_user');
                     triggerToast('Berhasil keluar akun.', 'success');
                   }}>
                     Keluar (Log Out)
