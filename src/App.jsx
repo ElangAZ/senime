@@ -593,6 +593,7 @@ export default function App() {
   const [suggestions, setSuggestions] = useState([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [mobileGenresOpen, setMobileGenresOpen] = useState(false);
+  const [desktopGenreOpen, setDesktopGenreOpen] = useState(false);
   const [selectedGenres, setSelectedGenres] = useState(() => {
     const currentRoute = window.location.hash || '#/';
     if (currentRoute.startsWith('#/genre/')) {
@@ -635,6 +636,7 @@ export default function App() {
   const searchInputRef = useRef(null);
   const suggestionsRef = useRef(null);
   const profileRef = useRef(null);
+  const genreDropdownRef = useRef(null);
 
   // Load history & supabase session on mount
   useEffect(() => {
@@ -740,6 +742,12 @@ export default function App() {
       ) {
         setProfileOpen(false);
       }
+      if (
+        genreDropdownRef.current &&
+        !genreDropdownRef.current.contains(e.target)
+      ) {
+        setDesktopGenreOpen(false);
+      }
     };
     document.addEventListener('click', handleClickOutside);
 
@@ -775,6 +783,7 @@ export default function App() {
     const genresStr = selectedGenres.join(',');
     window.location.hash = `#/genre/${genresStr}`;
     setMobileGenresOpen(false);
+    setDesktopGenreOpen(false);
   };
 
   const toggleFavorite = (item, isDonghua = false, isSamehadaku = false, isAnimasu = false) => {
@@ -1033,11 +1042,24 @@ export default function App() {
               <Heart size={16} /> Favorite
             </a>
 
-            <div className="genre-dropdown">
-              <button className="nav-link dropdown-trigger">
-                <Hash size={16} /> Genre <ChevronDown size={14} className="chevron" />
+            <div className="genre-dropdown" ref={genreDropdownRef}>
+              <button 
+                type="button"
+                className="nav-link dropdown-trigger"
+                onClick={() => setDesktopGenreOpen(!desktopGenreOpen)}
+              >
+                <Hash size={16} /> Genre <ChevronDown size={14} className="chevron" style={{ transform: desktopGenreOpen ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.3s ease' }} />
               </button>
-              <div className="dropdown-content" id="genres-list" style={{ pointerEvents: 'auto' }}>
+              <div 
+                className="dropdown-content" 
+                id="genres-list" 
+                style={{ 
+                  opacity: desktopGenreOpen ? 1 : 0,
+                  pointerEvents: desktopGenreOpen ? 'auto' : 'none',
+                  transform: desktopGenreOpen ? 'translateX(-50%) translateY(0)' : 'translateX(-50%) translateY(10px)',
+                  transition: 'var(--transition-smooth)'
+                }}
+              >
                 {GENRES_LIST.map(g => {
                   const isSelected = selectedGenres.includes(g.id);
                   return (
