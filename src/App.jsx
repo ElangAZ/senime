@@ -2777,6 +2777,7 @@ function StreamView({ episodeId, triggerToast, saveToHistory, isSamehadaku = fal
                 allowFullScreen
                 title={stream.title}
                 onLoad={handleIframeLoaded}
+                sandbox="allow-scripts allow-same-origin allow-presentation allow-forms"
               ></iframe>
             </div>
             
@@ -3445,6 +3446,7 @@ function DonghuaStreamView({ episodeSlug, triggerToast, saveToHistory }) {
                 frameBorder="0"
                 allowFullScreen
                 title={stream.episode}
+                sandbox="allow-scripts allow-same-origin allow-presentation allow-forms"
               ></iframe>
             </div>
 
