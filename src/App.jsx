@@ -401,83 +401,31 @@ function getAnimasuSeriesSlug(episodeSlug) {
   return slug;
 }
 
-// Ad Click Shield Component
-// Blocks popup/redirect ads from third-party streaming players (e.g. Filedon, Filemoon, etc.)
-// Works by placing a transparent overlay that absorbs the first few clicks which would normally
-// trigger ad popups, then becomes pointer-events:none to let real player clicks through.
-function AdClickShield() {
-  const [clicksRemaining, setClicksRemaining] = useState(2);
-  const [visible, setVisible] = useState(true);
-  const shieldTimerRef = useRef(null);
+// Server priority helper - reorders server list to prefer cleaner (less ads) servers
+// Servers like Filedon, Filemoon, FileLions are known to have aggressive popup/overlay ads
+// Servers like Videhide, Mega, Mp4Upload tend to be cleaner
+const AD_HEAVY_SERVERS = ['filedon', 'filelions', 'filemoon', 'streamtape', 'doodstream', 'dood'];
+const PREFERRED_SERVERS = ['videhide', 'vidcloud', 'mega', 'mp4upload', 'yourupload', 'desustream', 'archive'];
 
-  const handleShieldClick = (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    
-    setClicksRemaining(prev => {
-      const next = prev - 1;
-      if (next <= 0) {
-        // Hide shield after absorbing enough clicks
-        setVisible(false);
-        // Re-arm shield after 30 seconds (some players inject new ad layers periodically)
-        if (shieldTimerRef.current) clearTimeout(shieldTimerRef.current);
-        shieldTimerRef.current = setTimeout(() => {
-          setClicksRemaining(1);
-          setVisible(true);
-        }, 30000);
-      }
-      return next;
-    });
-  };
-
-  useEffect(() => {
-    // Reset shield when component mounts (new video loaded)
-    setClicksRemaining(2);
-    setVisible(true);
-    return () => {
-      if (shieldTimerRef.current) clearTimeout(shieldTimerRef.current);
-    };
-  }, []);
-
-  if (!visible) return null;
-
-  return (
-    <div
-      className="ad-click-shield"
-      onClick={handleShieldClick}
-      style={{
-        position: 'absolute',
-        top: 0,
-        left: 0,
-        width: '100%',
-        height: '100%',
-        zIndex: 10,
-        cursor: 'pointer',
-        background: 'transparent',
-      }}
-    >
-      {clicksRemaining > 0 && (
-        <div style={{
-          position: 'absolute',
-          bottom: '12px',
-          left: '50%',
-          transform: 'translateX(-50%)',
-          background: 'rgba(0,0,0,0.75)',
-          color: '#fff',
-          padding: '6px 16px',
-          borderRadius: '20px',
-          fontSize: '12px',
-          fontWeight: '600',
-          pointerEvents: 'none',
-          backdropFilter: 'blur(6px)',
-          border: '1px solid rgba(255,255,255,0.1)',
-          whiteSpace: 'nowrap',
-        }}>
-          🛡️ Klik {clicksRemaining}x untuk melewati iklan
-        </div>
-      )}
-    </div>
-  );
+function reorderServersByAdLevel(servers) {
+  if (!servers || servers.length <= 1) return servers;
+  
+  const preferred = [];
+  const normal = [];
+  const adHeavy = [];
+  
+  servers.forEach(server => {
+    const name = (server.title || server.serverId || server.name || '').toLowerCase();
+    if (PREFERRED_SERVERS.some(p => name.includes(p))) {
+      preferred.push(server);
+    } else if (AD_HEAVY_SERVERS.some(a => name.includes(a))) {
+      adHeavy.push(server);
+    } else {
+      normal.push(server);
+    }
+  });
+  
+  return [...preferred, ...normal, ...adHeavy];
 }
 
 // Premium LoginView with Glassmorphism and Google Sign-in simulation
@@ -2631,19 +2579,21 @@ function StreamView({ episodeId, triggerToast, saveToHistory, isSamehadaku = fal
           setLoading(false);
 
           if (streams.length > 0) {
-            setPlayerUrl(streams[0].url);
-            setActiveQuality(streams[0].name || 'Def');
-            
             const servers = streams.map(s => ({
               serverId: s.url,
               title: s.name,
               url: s.url
             }));
-            setServerList(servers);
-            setActiveServer(streams[0].url);
+            const orderedServers = reorderServersByAdLevel(servers);
+            setServerList(orderedServers);
             
-            // Start timeout tracker for first Animasu server
-            startIframeTimeout(streams[0].url, servers);
+            if (orderedServers.length > 0) {
+              const firstServer = orderedServers[0];
+              setPlayerUrl(firstServer.url);
+              setActiveQuality(firstServer.title || 'Def');
+              setActiveServer(firstServer.serverId);
+              startIframeTimeout(firstServer.serverId, orderedServers);
+            }
           }
 
           // Fetch parent details
@@ -2727,27 +2677,28 @@ function StreamView({ episodeId, triggerToast, saveToHistory, isSamehadaku = fal
             const activeQualities = data.server.qualities.filter(q => q.serverList && q.serverList.length > 0);
             if (activeQualities.length > 0) {
               setActiveQuality(activeQualities[0].title);
-              setServerList(activeQualities[0].serverList);
-              if (activeQualities[0].serverList.length > 0) {
-                const firstServer = activeQualities[0].serverList[0];
+              const orderedServers = reorderServersByAdLevel(activeQualities[0].serverList);
+              setServerList(orderedServers);
+              if (orderedServers.length > 0) {
+                const firstServer = orderedServers[0];
                 setActiveServer(firstServer.serverId);
                 
                 // CRITICAL HOTFIX: If defaultStreamingUrl is missing or says "No iframe found", auto load first server!
                 if (!initialPlayerUrl) {
                   try {
                     console.log(`Auto-switching to first server: ${firstServer.title}`);
-                    startIframeTimeout(firstServer.serverId, activeQualities[0].serverList);
+                    startIframeTimeout(firstServer.serverId, orderedServers);
                     const serverRes = await fetchAPI(`/server/${firstServer.serverId}`, isSamehadaku);
                     if (serverRes.data && serverRes.data.url && active) {
                       setPlayerUrl(serverRes.data.url);
                     }
                   } catch (e) {
                     console.warn('Auto server fetch failed:', e.message);
-                    handleIframeTimeout(firstServer.serverId, activeQualities[0].serverList);
+                    handleIframeTimeout(firstServer.serverId, orderedServers);
                   }
                 } else {
                   // If we use initialPlayerUrl, still track it based on first server index
-                  startIframeTimeout(firstServer.serverId, activeQualities[0].serverList);
+                  startIframeTimeout(firstServer.serverId, orderedServers);
                 }
               }
             }
@@ -2795,9 +2746,10 @@ function StreamView({ episodeId, triggerToast, saveToHistory, isSamehadaku = fal
 
   const switchQuality = (q) => {
     setActiveQuality(q.title);
-    setServerList(q.serverList || []);
-    if (q.serverList && q.serverList.length > 0) {
-      switchServer(q.serverList[0], q.serverList);
+    const orderedServers = reorderServersByAdLevel(q.serverList || []);
+    setServerList(orderedServers);
+    if (orderedServers && orderedServers.length > 0) {
+      switchServer(orderedServers[0], orderedServers);
     }
   };
 
@@ -2849,8 +2801,6 @@ function StreamView({ episodeId, triggerToast, saveToHistory, isSamehadaku = fal
         <div className="stream-main">
           <div className="video-section">
             <div className="video-player-wrapper">
-              {/* Ad Click Shield - absorbs first click that would trigger popup ads */}
-              <AdClickShield />
               <iframe 
                 id="video-player" 
                 src={playerUrl} 
@@ -3439,17 +3389,27 @@ function DonghuaStreamView({ episodeSlug, triggerToast, saveToHistory }) {
         setStream(data);
         setLoading(false);
 
-        if (data.streaming?.main_url?.url) {
-          setPlayerUrl(data.streaming.main_url.url);
-        } else if (data.streaming?.servers?.length > 0) {
-          setPlayerUrl(data.streaming.servers[0].url);
+        let orderedServers = [];
+        if (data.streaming?.servers) {
+          orderedServers = reorderServersByAdLevel(data.streaming.servers);
+          setServerList(orderedServers);
         }
 
-        if (data.streaming?.servers) {
-          setServerList(data.streaming.servers);
-          if (data.streaming.servers.length > 0) {
-            setActiveServer(data.streaming.servers[0].name);
+        if (data.streaming?.main_url?.url) {
+          const mainUrlLower = data.streaming.main_url.url.toLowerCase();
+          const mainIsHeavy = AD_HEAVY_SERVERS.some(a => mainUrlLower.includes(a));
+          if (mainIsHeavy && orderedServers.length > 0 && !AD_HEAVY_SERVERS.some(a => (orderedServers[0].name || '').toLowerCase().includes(a))) {
+            setPlayerUrl(orderedServers[0].url);
+            setActiveServer(orderedServers[0].name);
+          } else {
+            setPlayerUrl(data.streaming.main_url.url);
+            if (orderedServers.length > 0) {
+              setActiveServer(orderedServers[0].name);
+            }
           }
+        } else if (orderedServers.length > 0) {
+          setPlayerUrl(orderedServers[0].url);
+          setActiveServer(orderedServers[0].name);
         }
 
         if (data.donghua_details?.slug) {
@@ -3522,8 +3482,6 @@ function DonghuaStreamView({ episodeSlug, triggerToast, saveToHistory }) {
         <div className="stream-main">
           <div className="video-section">
             <div className="video-player-wrapper">
-              {/* Ad Click Shield - absorbs first click that would trigger popup ads */}
-              <AdClickShield />
               <iframe
                 id="donghua-video-player"
                 src={playerUrl}
