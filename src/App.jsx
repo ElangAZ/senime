@@ -2128,6 +2128,8 @@ function DetailView({ animeId, triggerToast, saveToHistory, toggleFavorite, isFa
   useEffect(() => {
     let active = true;
     setLoading(true);
+    setMalCharacters([]);
+    setMalTrailerId('qgQkT5uj1co'); // Reset trailer to fallback when loading a new anime
     const loadDetails = async () => {
       try {
         const sourceParam = isSamehadaku ? 'samehadaku' : isAnimasu ? 'animasu' : 'otakudesu';
@@ -2310,20 +2312,18 @@ function DetailView({ animeId, triggerToast, saveToHistory, toggleFavorite, isFa
             </div>
             
             {/* Trailer */}
-            {malTrailerId && (
-              <div className="mal-section-box">
-                <h2 className="mal-section-title"><Play size={18} className="text-accent" /> Trailer</h2>
-                <div className="mal-trailer-container">
-                  <iframe
-                    src={`https://www.youtube.com/embed/${malTrailerId}`}
-                    title={`${detail.title} Official Trailer`}
-                    frameBorder="0"
-                    allowFullScreen
-                    className="mal-trailer-iframe"
-                  ></iframe>
-                </div>
+            <div className="mal-section-box">
+              <h2 className="mal-section-title"><Play size={18} className="text-accent" /> Trailer</h2>
+              <div className="mal-trailer-container">
+                <iframe
+                  src={`https://www.youtube.com/embed/${malTrailerId || 'qgQkT5uj1co'}`}
+                  title={`${detail.title} Official Trailer`}
+                  frameBorder="0"
+                  allowFullScreen
+                  className="mal-trailer-iframe"
+                ></iframe>
               </div>
-            )}
+            </div>
             
             {/* Characters */}
             <div className="mal-section-box">
