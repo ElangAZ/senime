@@ -979,7 +979,7 @@ export default function App() {
         <div className="header-container">
           <a href="#/" className="logo">
             <Play className="logo-icon" fill="currentColor" />
-            <span className="logo-text">Kiyo<span>ka</span></span>
+            <span className="logo-text">Hakayo<span>nime</span></span>
           </a>
           
           <nav className="desktop-nav">
