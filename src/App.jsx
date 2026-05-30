@@ -550,6 +550,13 @@ export default function App() {
 
   // Load history & supabase session on mount
   useEffect(() => {
+    // Clean up Supabase OAuth hash fragments (access_token, refresh_token, etc.) immediately on mount
+    const initHash = window.location.hash || '#/';
+    if (initHash.includes('access_token=') || initHash.includes('error=')) {
+      window.history.replaceState(null, '', window.location.pathname + window.location.search);
+      setRoute('#/');
+    }
+
     // 1. Migrate older local history entries that belong to Donghua
     const stored = JSON.parse(safeStorage.getItem('nekowatch_history', '[]')) || [];
     let migrated = false;
@@ -619,7 +626,16 @@ export default function App() {
     }
 
     const handleHashChange = () => {
-      const currentRoute = window.location.hash || '#/';
+      let currentRoute = window.location.hash || '#/';
+      
+      // Clean up Supabase OAuth hash fragments (access_token, refresh_token, etc.)
+      if (currentRoute.includes('access_token=') || currentRoute.includes('error=')) {
+        // If it's a Supabase callback hash, clean it up and keep only the simple route
+        currentRoute = '#/';
+        // Replace hash in URL bar silently without triggering hashchange again
+        window.history.replaceState(null, '', window.location.pathname + window.location.search);
+      }
+
       setRoute(currentRoute);
       setShowSuggestions(false);
       setSearchQuery('');
