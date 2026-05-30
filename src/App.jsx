@@ -1149,8 +1149,7 @@ export default function App() {
     }
   };
 
-  // Lockout logic rendering LoginView if no active session (Bypassed for now)
-  /*
+  // Lockout logic rendering LoginView if no active session (Re-enabled!)
   if (!user) {
     return (
       <ErrorBoundary>
@@ -1172,7 +1171,6 @@ export default function App() {
       </ErrorBoundary>
     );
   }
-  */
 
   return (
     <>
