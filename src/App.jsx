@@ -1532,16 +1532,7 @@ function DonationView({ triggerToast }) {
   ];
 
   // Supporters list for the marquee
-  const topSupporters = [
-    { name: 'SultanWibu99', amount: 'Rp 500.000', letter: 'S', color: '#fbbf24' },
-    { name: 'OtakuGanteng', amount: 'Rp 150.000', letter: 'O', color: '#ec4899' },
-    { name: 'WibuKaya', amount: 'Rp 100.000', letter: 'W', color: '#8b5cf6' },
-    { name: 'NakamaBCA', amount: 'Rp 50.000', letter: 'N', color: '#06b6d4' },
-    { name: 'LuffyG5', amount: 'Rp 50.000', letter: 'L', color: '#3ecf8e' },
-    { name: 'ZoroLover', amount: 'Rp 25.000', letter: 'Z', color: '#fbbf24' },
-    { name: 'NamiSan', amount: 'Rp 25.000', letter: 'N', color: '#ec4899' },
-    { name: 'LawRoom', amount: 'Rp 10.000', letter: 'L', color: '#8b5cf6' }
-  ];
+  const topSupporters = [];
 
   const handleCopy = (number) => {
     navigator.clipboard.writeText(number);
@@ -1572,7 +1563,7 @@ function DonationView({ triggerToast }) {
                   Total Donasi Terkumpul (Mei 2026):
                 </span>
                 <span className="progress-values" style={{ fontSize: '22px', fontWeight: '800', color: 'var(--accent)', textShadow: '0 0 15px var(--accent-glow)', margin: '4px 0' }}>
-                  Rp 325.000
+                  Rp 0
                 </span>
               </div>
               <p className="progress-footer-text" style={{ textAlign: 'center', marginTop: '8px', fontSize: '12px' }}>
@@ -1682,22 +1673,30 @@ function DonationView({ triggerToast }) {
               <Heart className="title-icon text-pink" size={18} fill="var(--pink)" /> Wall of Fame (Para Supporter Setia)
             </h2>
           </div>
-          <div style={{ overflow: 'hidden', width: '100%', position: 'relative' }}>
-            <div className="wall-of-fame-marquee">
-              {/* Double list to achieve infinite seamless loop */}
-              {[...topSupporters, ...topSupporters].map((sup, idx) => (
-                <div key={idx} className="wall-card">
-                  <div className="wall-card-avatar" style={{ backgroundColor: sup.color }}>
-                    {sup.letter}
-                  </div>
-                  <div className="wall-card-info">
-                    <span className="wall-card-name">{sup.name}</span>
-                    <span className="wall-card-amount">{sup.amount}</span>
-                  </div>
-                </div>
-              ))}
+          {topSupporters.length === 0 ? (
+            <div className="no-data" style={{ padding: '30px', background: 'rgba(255,255,255,0.02)', border: '1px dashed var(--border-glass)', borderRadius: 'var(--radius-sm)', textAlign: 'center', color: 'var(--text-secondary)' }}>
+              <Sparkles size={24} style={{ color: 'var(--accent)', marginBottom: '8px', display: 'inline-block' }} />
+              <p style={{ margin: 0, fontWeight: '500' }}>Belum ada pendukung bulan ini.</p>
+              <p style={{ margin: '4px 0 0 0', fontSize: '12px', color: 'var(--text-muted)' }}>Jadilah pendukung setia pertama Hakayonime! 🌟</p>
             </div>
-          </div>
+          ) : (
+            <div style={{ overflow: 'hidden', width: '100%', position: 'relative' }}>
+              <div className="wall-of-fame-marquee">
+                {/* Double list to achieve infinite seamless loop */}
+                {[...topSupporters, ...topSupporters].map((sup, idx) => (
+                  <div key={idx} className="wall-card">
+                    <div className="wall-card-avatar" style={{ backgroundColor: sup.color }}>
+                      {sup.letter}
+                    </div>
+                    <div className="wall-card-info">
+                      <span className="wall-card-name">{sup.name}</span>
+                      <span className="wall-card-amount">{sup.amount}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
       </div>
