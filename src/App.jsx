@@ -1564,20 +1564,20 @@ function DonationView({ triggerToast }) {
               sangatlah berarti untuk membayar biaya sewa server bulanan dan menjaga semangat tim dalam memperbarui anime favorit Anda setiap hari!
             </p>
             
-            {/* Server Goal Progress Bar */}
+            {/* Total Funds Collected */}
             <div className="donation-progress-card">
-              <div className="progress-header">
-                <span className="progress-title">
-                  <Flame size={16} style={{ color: 'var(--pink)' }} /> Target Biaya Bulanan Server (Mei 2026)
+              <div className="progress-header" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px' }}>
+                <span className="progress-title" style={{ fontSize: '14px', opacity: 0.9 }}>
+                  <Flame size={16} style={{ color: 'var(--pink)', display: 'inline-block', verticalAlign: 'middle', marginRight: '6px' }} />
+                  Total Donasi Terkumpul (Mei 2026):
                 </span>
-                <span className="progress-values">Rp 325.000 / Rp 500.000 (65%)</span>
+                <span className="progress-values" style={{ fontSize: '22px', fontWeight: '800', color: 'var(--accent)', textShadow: '0 0 15px var(--accent-glow)', margin: '4px 0' }}>
+                  Rp 325.000
+                </span>
               </div>
-              <div className="progress-bar-bg">
-                <div className="progress-bar-fill" style={{ width: '65%' }}></div>
-              </div>
-              <p className="progress-footer-text">
-                Uang yang terkumpul murni digunakan 100% untuk biaya VPS, Domain, dan Server Proxy API. 
-                Jika target tercapai, kami akan menambahkan server streaming alternatif super cepat bebas *buffering*!
+              <p className="progress-footer-text" style={{ textAlign: 'center', marginTop: '8px', fontSize: '12px' }}>
+                Uang yang terkumpul murni digunakan 100% untuk biaya operasional VPS, Domain, dan Server Proxy API. 
+                Terima kasih banyak atas dukungan tulus dari teman-teman untuk menjaga kelangsungan Hakayonime!
               </p>
             </div>
           </div>
