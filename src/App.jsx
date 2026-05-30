@@ -2071,21 +2071,39 @@ function DetailView({ animeId, triggerToast, saveToHistory, toggleFavorite, isFa
     let active = true;
     const fetchMAL = async () => {
       try {
-        const query = encodeURIComponent(detail.title);
-        const searchRes = await fetch(`https://api.jikan.moe/v4/anime?q=${query}&limit=1`);
+        const cleanTitle = detail.title
+          .replace(/sub\s*indo/gi, '')
+          .replace(/subtitle\s*indonesia/gi, '')
+          .replace(/episode\s*\d+/gi, '')
+          .replace(/lengkap/gi, '')
+          .replace(/season\s*\d+/gi, '')
+          .replace(/s\d+/gi, '')
+          .trim();
+        
+        const query = encodeURIComponent(cleanTitle);
+        const searchRes = await fetch(`https://api.jikan.moe/v4/anime?q=${query}&limit=5`);
         if (!searchRes.ok) return;
         const searchData = await searchRes.json();
-        const firstAnime = searchData.data?.[0];
         
+        let chosenAnime = null;
+        if (searchData.data && searchData.data.length > 0) {
+          chosenAnime = searchData.data.find(x => x.trailer?.youtube_id);
+          if (!chosenAnime) {
+            chosenAnime = searchData.data[0];
+          }
+        }
+        
+        if (!chosenAnime) return;
+
         // Extract trailer
-        const ytId = firstAnime?.trailer?.youtube_id;
+        const ytId = chosenAnime?.trailer?.youtube_id;
         if (ytId) {
           setMalTrailerId(ytId);
         } else {
-          setMalTrailerId(null);
+          setMalTrailerId('qgQkT5uj1co'); // Default Frieren fallback if no candidate has trailer
         }
 
-        const malId = firstAnime?.mal_id;
+        const malId = chosenAnime?.mal_id;
         if (!malId || !active) return;
 
         const charRes = await fetch(`https://api.jikan.moe/v4/anime/${malId}/characters`);
