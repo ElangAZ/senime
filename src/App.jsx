@@ -2669,7 +2669,6 @@ function StreamView({ episodeId, triggerToast, saveToHistory, isSamehadaku = fal
           let initialPlayerUrl = '';
           if (data.defaultStreamingUrl && data.defaultStreamingUrl !== 'No iframe found') {
             initialPlayerUrl = data.defaultStreamingUrl;
-            setPlayerUrl(data.defaultStreamingUrl);
           }
 
           // Handle quality list
@@ -2683,10 +2682,13 @@ function StreamView({ episodeId, triggerToast, saveToHistory, isSamehadaku = fal
                 const firstServer = orderedServers[0];
                 setActiveServer(firstServer.serverId);
                 
-                // CRITICAL HOTFIX: If defaultStreamingUrl is missing or says "No iframe found", auto load first server!
-                if (!initialPlayerUrl) {
+                const isInitialAdHeavy = initialPlayerUrl && AD_HEAVY_SERVERS.some(a => initialPlayerUrl.toLowerCase().includes(a));
+                const firstIsClean = !AD_HEAVY_SERVERS.some(a => (firstServer.title || '').toLowerCase().includes(a));
+
+                // If default is empty, ad-heavy, or we have a cleaner first option: auto load the first server!
+                if (!initialPlayerUrl || (isInitialAdHeavy && firstIsClean)) {
                   try {
-                    console.log(`Auto-switching to first server: ${firstServer.title}`);
+                    console.log(`Auto-switching to clean server: ${firstServer.title}`);
                     startIframeTimeout(firstServer.serverId, orderedServers);
                     const serverRes = await fetchAPI(`/server/${firstServer.serverId}`, isSamehadaku);
                     if (serverRes.data && serverRes.data.url && active) {
@@ -2697,7 +2699,7 @@ function StreamView({ episodeId, triggerToast, saveToHistory, isSamehadaku = fal
                     handleIframeTimeout(firstServer.serverId, orderedServers);
                   }
                 } else {
-                  // If we use initialPlayerUrl, still track it based on first server index
+                  setPlayerUrl(initialPlayerUrl);
                   startIframeTimeout(firstServer.serverId, orderedServers);
                 }
               }
