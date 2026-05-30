@@ -593,6 +593,15 @@ export default function App() {
   const [suggestions, setSuggestions] = useState([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [mobileGenresOpen, setMobileGenresOpen] = useState(false);
+  const [selectedGenres, setSelectedGenres] = useState(() => {
+    const currentRoute = window.location.hash || '#/';
+    if (currentRoute.startsWith('#/genre/')) {
+      const parts = currentRoute.split('/');
+      const genreIdStr = parts[2];
+      return genreIdStr ? genreIdStr.split(',') : [];
+    }
+    return [];
+  });
   const [historyItems, setHistoryItems] = useState([]);
   const [toast, setToast] = useState(null);
   const [favorites, setFavorites] = useState(() => {
@@ -698,10 +707,19 @@ export default function App() {
     }
 
     const handleHashChange = () => {
-      setRoute(window.location.hash || '#/');
+      const currentRoute = window.location.hash || '#/';
+      setRoute(currentRoute);
       setShowSuggestions(false);
       setSearchQuery('');
       setMobileGenresOpen(false);
+
+      if (currentRoute.startsWith('#/genre/')) {
+        const parts = currentRoute.split('/');
+        const genreIdStr = parts[2];
+        setSelectedGenres(genreIdStr ? genreIdStr.split(',') : []);
+      } else {
+        setSelectedGenres([]);
+      }
     };
 
     window.addEventListener('hashchange', handleHashChange);
@@ -737,6 +755,26 @@ export default function App() {
   const triggerToast = (message, type = 'success') => {
     setToast({ message, type });
     setTimeout(() => setToast(null), 3000);
+  };
+
+  const handleToggleGenre = (genreId) => {
+    setSelectedGenres(prev => {
+      if (prev.includes(genreId)) {
+        return prev.filter(id => id !== genreId);
+      } else {
+        return [...prev, genreId];
+      }
+    });
+  };
+
+  const handleApplyGenres = () => {
+    if (selectedGenres.length === 0) {
+      triggerToast('Silakan pilih minimal 1 genre!', 'error');
+      return;
+    }
+    const genresStr = selectedGenres.join(',');
+    window.location.hash = `#/genre/${genresStr}`;
+    setMobileGenresOpen(false);
   };
 
   const toggleFavorite = (item, isDonghua = false, isSamehadaku = false, isAnimasu = false) => {
@@ -999,10 +1037,45 @@ export default function App() {
               <button className="nav-link dropdown-trigger">
                 <Hash size={16} /> Genre <ChevronDown size={14} className="chevron" />
               </button>
-              <div className="dropdown-content" id="genres-list">
-                {GENRES_LIST.map(g => (
-                  <a key={g.id} href={`#/genre/${g.id}`} className="genre-item">{g.title}</a>
-                ))}
+              <div className="dropdown-content" id="genres-list" style={{ pointerEvents: 'auto' }}>
+                {GENRES_LIST.map(g => {
+                  const isSelected = selectedGenres.includes(g.id);
+                  return (
+                    <button 
+                      key={g.id} 
+                      type="button"
+                      className={`genre-item ${isSelected ? 'active' : ''}`}
+                      onClick={() => handleToggleGenre(g.id)}
+                      style={{ 
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        justifyContent: 'center', 
+                        gap: '6px',
+                        background: isSelected ? 'var(--accent)' : '#ffffff05',
+                        borderColor: isSelected ? 'var(--accent)' : 'transparent',
+                        color: isSelected ? '#fff' : 'var(--text-secondary)'
+                      }}
+                    >
+                      <span>{g.title}</span>
+                    </button>
+                  );
+                })}
+                <div style={{ gridColumn: 'span 3', display: 'flex', gap: '8px', marginTop: '8px', borderTop: '1px solid var(--border-glass)', paddingTop: '12px' }}>
+                  <button 
+                    type="button" 
+                    onClick={handleApplyGenres}
+                    style={{ flex: 1, padding: '8px', borderRadius: 'var(--radius-sm)', background: 'var(--accent)', color: '#fff', fontWeight: 600, fontSize: '13px', textAlign: 'center' }}
+                  >
+                    Terapkan
+                  </button>
+                  <button 
+                    type="button" 
+                    onClick={() => setSelectedGenres([])}
+                    style={{ padding: '8px 16px', borderRadius: 'var(--radius-sm)', background: '#ffffff0a', border: '1px solid var(--border-glass)', color: 'var(--text-secondary)', fontSize: '13px' }}
+                  >
+                    Reset
+                  </button>
+                </div>
               </div>
             </div>
             <a href="#/donghua" className={`nav-link ${route.startsWith('#/donghua') ? 'active' : ''}`}>
@@ -1147,12 +1220,48 @@ export default function App() {
               <h2><Hash size={20} /> Pilih Genre</h2>
               <button className="modal-close" onClick={() => setMobileGenresOpen(false)}><X size={20} /></button>
             </div>
-            <div className="modal-body">
-              {GENRES_LIST.map(genre => (
-                <a key={genre.id} href={`#/genre/${genre.id}`} className="genre-item" onClick={() => setMobileGenresOpen(false)}>
-                  {genre.title}
-                </a>
-              ))}
+            <div className="modal-body" style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '8px' }}>
+              {GENRES_LIST.map(genre => {
+                const isSelected = selectedGenres.includes(genre.id);
+                return (
+                  <button 
+                    key={genre.id} 
+                    type="button"
+                    className={`genre-item ${isSelected ? 'active' : ''}`}
+                    onClick={() => handleToggleGenre(genre.id)}
+                    style={{ 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      justifyContent: 'center', 
+                      padding: '10px 6px',
+                      borderRadius: 'var(--radius-sm)',
+                      background: isSelected ? 'var(--accent)' : '#ffffff05',
+                      borderColor: isSelected ? 'var(--accent)' : 'transparent',
+                      color: isSelected ? '#fff' : 'var(--text-secondary)',
+                      fontSize: '13px',
+                      fontWeight: 500
+                    }}
+                  >
+                    <span>{genre.title}</span>
+                  </button>
+                );
+              })}
+              <div style={{ gridColumn: 'span 2', display: 'flex', gap: '8px', marginTop: '12px', borderTop: '1px solid var(--border-glass)', paddingTop: '14px' }}>
+                <button 
+                  type="button" 
+                  onClick={handleApplyGenres}
+                  style={{ flex: 1, padding: '12px', borderRadius: 'var(--radius-sm)', background: 'var(--accent)', color: '#fff', fontWeight: 600, fontSize: '14px', textAlign: 'center' }}
+                >
+                  Terapkan
+                </button>
+                <button 
+                  type="button" 
+                  onClick={() => setSelectedGenres([])}
+                  style={{ padding: '12px 18px', borderRadius: 'var(--radius-sm)', background: '#ffffff0a', border: '1px solid var(--border-glass)', color: 'var(--text-secondary)', fontSize: '14px' }}
+                >
+                  Reset
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -3109,8 +3218,9 @@ function ResultsView({ mode, query, genreId, page = 1, toggleFavorite, isFavorit
   const [loading, setLoading] = useState(true);
 
   // Genre specific name matching
-  const genreInfo = mode === 'genre' ? GENRES_LIST.find(g => g.id === genreId) : null;
-  const displayName = genreInfo ? genreInfo.title : genreId;
+  const genreIds = mode === 'genre' && genreId ? genreId.split(',') : [];
+  const genreInfos = genreIds.map(id => GENRES_LIST.find(g => g.id === id)).filter(Boolean);
+  const displayName = genreInfos.map(g => g.title).join(', ');
 
   useEffect(() => {
     let active = true;
@@ -3191,16 +3301,44 @@ function ResultsView({ mode, query, genreId, page = 1, toggleFavorite, isFavorit
           if (active) setLoading(false);
         }
       } else {
-        const endpoint = `/genre/${genreId}?page=${page}`;
         try {
-          const res = await fetchAPI(endpoint, false);
-          if (res.data && active) {
-            const tagged = (res.data.animeList || []).map(item => ({
-              ...item,
-              source: 'Otakudesu'
-            }));
-            setList(tagged);
-            setPagination(res.pagination || res.data.pagination || null);
+          const genreIdsList = genreId.split(',');
+          const fetchPromises = genreIdsList.map(id => fetchAPI(`/genre/${id}?page=${page}`, false));
+          const results = await Promise.allSettled(fetchPromises);
+
+          let mergedList = [];
+          const matchedCounts = {};
+
+          results.forEach((res, index) => {
+            if (res.status === 'fulfilled' && res.value?.data?.animeList) {
+              res.value.data.animeList.forEach(item => {
+                const itemId = item.animeId || item.slug || '';
+                if (itemId) {
+                  matchedCounts[itemId] = (matchedCounts[itemId] || 0) + 1;
+                  if (!mergedList.some(x => x.animeId === itemId)) {
+                    mergedList.push({
+                      ...item,
+                      source: 'Otakudesu'
+                    });
+                  }
+                }
+              });
+            }
+          });
+
+          // Sort by match count (descending) so items matching more of the selected genres are displayed first
+          mergedList.sort((a, b) => {
+            const countA = matchedCounts[a.animeId] || 0;
+            const countB = matchedCounts[b.animeId] || 0;
+            return countB - countA;
+          });
+
+          if (active) {
+            setList(mergedList);
+            const firstResult = results.find(r => r.status === 'fulfilled');
+            if (firstResult && firstResult.value) {
+              setPagination(firstResult.value.pagination || firstResult.value.data?.pagination || null);
+            }
             setLoading(false);
           }
         } catch (err) {
