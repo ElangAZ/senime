@@ -576,14 +576,7 @@ function LoginView({ onLogin, triggerToast }) {
         <DarkVeil speed={0.4} warpAmount={0.06} noiseIntensity={0.01} resolutionScale={0.75} />
       </div>
       <div className="login-card">
-        <button 
-          className="btn-supabase-settings" 
-          onClick={() => setShowConfig(true)}
-          title="Ubah Konfigurasi Supabase"
-          style={{ position: 'absolute', top: '16px', right: '16px', background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '18px', padding: '6px', borderRadius: '50%', transition: 'all 0.2s' }}
-        >
-          ⚙️
-        </button>
+
 
         <div className="login-logo">
           <Play className="logo-icon animate-pulse" fill="currentColor" size={28} />
