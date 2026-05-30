@@ -533,6 +533,7 @@ export default function App() {
     }
   });
   const [profileOpen, setProfileOpen] = useState(false);
+  const [showProfileModal, setShowProfileModal] = useState(false);
 
   // Scroll to top on route/view change
   useEffect(() => {
@@ -1102,8 +1103,16 @@ export default function App() {
                 <div className="profile-dropdown-menu">
                   <div className="profile-menu-header">
                     <h4>{user.username}</h4>
-                    {user.email && <p>{user.email}</p>}
+                    <span style={{ fontSize: '11px', background: 'var(--accent)', color: '#fff', padding: '2px 8px', borderRadius: '10px', fontWeight: '700', display: 'inline-block', marginTop: '2px', marginBottom: '4px', boxShadow: '0 0 8px var(--accent-glow)' }}>{user.rank || 'Wibu Elite'}</span>
+                    {user.email && <p style={{ margin: 0, opacity: 0.7 }}>{user.email}</p>}
                   </div>
+                  <button 
+                    className="profile-menu-item" 
+                    style={{ borderBottom: '1px solid var(--border-glass)', marginBottom: '4px', textAlign: 'left', display: 'flex', alignItems: 'center', gap: '8px' }} 
+                    onClick={() => { setProfileOpen(false); setShowProfileModal(true); }}
+                  >
+                    👤 Edit Profil &amp; Info Akun
+                  </button>
                   <button className="profile-menu-item logout-btn" onClick={async () => {
                     if (isSupabaseConfigured()) {
                       await supabase.auth.signOut();
@@ -1210,6 +1219,19 @@ export default function App() {
 
 
 
+      {/* Profile Modal */}
+      {showProfileModal && user && (
+        <ProfileModal 
+          user={user} 
+          onClose={() => setShowProfileModal(false)} 
+          onSave={(updatedUser) => {
+            setUser(updatedUser);
+            safeStorage.setItem('senime_user', JSON.stringify(updatedUser));
+            triggerToast('Profil berhasil disimpan!', 'success');
+          }}
+        />
+      )}
+
       {/* Toast Notification */}
       {toast && (
         <div className="toast-container">
@@ -1225,6 +1247,169 @@ export default function App() {
         <p>&copy; 2026 NekoWatch. Dibuat oleh Senux. API didukung oleh Sankavollerei.</p>
       </footer>
     </>
+  );
+}
+
+// Premium Profile Edit Modal Component
+function ProfileModal({ user, onClose, onSave }) {
+  const [username, setUsername] = useState(user.username || '');
+  const [avatarColor, setAvatarColor] = useState(user.avatarColor || '#a855f7');
+  const [avatarLetter, setAvatarLetter] = useState(user.avatarLetter || (user.username ? user.username.charAt(0).toUpperCase() : 'U'));
+  const [rank, setRank] = useState(user.rank || 'Wibu Elite');
+  const [motto, setMotto] = useState(user.motto || 'Nonton anime jalan ninjaku! ⚡');
+
+  const colorPresets = [
+    '#ec4899', // Pink
+    '#a855f7', // Purple
+    '#06b6d4', // Cyan
+    '#eab308', // Gold
+    '#10b981', // Emerald
+    '#ef4444', // Red
+    '#3b82f6'  // Blue
+  ];
+
+  const rankPresets = [
+    'Wibu Elite',
+    'Premium Member',
+    'VIP Watcher',
+    'Sultan Streaming',
+    'Otaku Sejati',
+    'Sepuh Anime'
+  ];
+
+  const handleUsernameChange = (val) => {
+    setUsername(val);
+    if (val.trim()) {
+      setAvatarLetter(val.trim().charAt(0).toUpperCase());
+    }
+  };
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    if (!username.trim()) return;
+    onSave({
+      ...user,
+      username: username.trim(),
+      avatarColor,
+      avatarLetter,
+      rank,
+      motto: motto.trim()
+    });
+    onClose();
+  };
+
+  return (
+    <div className="modal active" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+      <div className="modal-overlay" style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)' }} onClick={onClose}></div>
+      <div className="modal-content" style={{ width: '400px', background: 'var(--bg-glass)', border: '1px solid var(--border-glass)', borderRadius: 'var(--radius-md)', padding: '24px', position: 'relative', backdropFilter: 'blur(20px)', zIndex: 1001, boxShadow: '0 10px 40px rgba(0,0,0,0.5)', color: 'var(--text-primary)' }}>
+        
+        <div className="modal-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', borderBottom: '1px solid var(--border-glass)', paddingBottom: '12px' }}>
+          <h2 style={{ fontSize: '18px', fontWeight: '700', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>👤 Edit Profil &amp; Info Akun</h2>
+          <button style={{ background: 'transparent', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer' }} onClick={onClose}><X size={20} /></button>
+        </div>
+
+        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          {/* Avatar Preview */}
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+            <div style={{ width: '70px', height: '70px', borderRadius: '50%', backgroundColor: avatarColor, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '28px', fontWeight: '700', color: '#fff', boxShadow: '0 4px 15px rgba(0,0,0,0.3)', textShadow: '0 2px 4px rgba(0,0,0,0.2)', transition: 'background-color 0.3s ease' }}>
+              {avatarLetter}
+            </div>
+            <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Pratinjau Avatar</span>
+          </div>
+
+          {/* Edit Username */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+            <label style={{ fontSize: '13px', fontWeight: '600', color: 'var(--text-secondary)', textAlign: 'left' }}>Username</label>
+            <input 
+              type="text" 
+              value={username}
+              onChange={(e) => handleUsernameChange(e.target.value)}
+              required
+              placeholder="Masukkan username"
+              style={{ padding: '10px 12px', background: 'rgba(0,0,0,0.2)', border: '1px solid var(--border-glass)', borderRadius: 'var(--radius-sm)', color: '#fff', fontSize: '14px' }}
+            />
+          </div>
+
+          {/* Edit Avatar Color */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+            <label style={{ fontSize: '13px', fontWeight: '600', color: 'var(--text-secondary)', textAlign: 'left' }}>Warna Avatar</label>
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+              {colorPresets.map(color => (
+                <button
+                  key={color}
+                  type="button"
+                  onClick={() => setAvatarColor(color)}
+                  style={{ width: '28px', height: '28px', borderRadius: '50%', background: color, border: avatarColor === color ? '2px solid #fff' : '2px solid transparent', cursor: 'pointer', transition: 'all 0.2s', boxShadow: avatarColor === color ? '0 0 10px rgba(255,255,255,0.4)' : 'none' }}
+                />
+              ))}
+            </div>
+          </div>
+
+          {/* Motto / Status */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+            <label style={{ fontSize: '13px', fontWeight: '600', color: 'var(--text-secondary)', textAlign: 'left' }}>Motto / Status</label>
+            <input 
+              type="text" 
+              value={motto}
+              onChange={(e) => setMotto(e.target.value)}
+              placeholder="Nonton anime jalan ninjaku! ⚡"
+              style={{ padding: '10px 12px', background: 'rgba(0,0,0,0.2)', border: '1px solid var(--border-glass)', borderRadius: 'var(--radius-sm)', color: '#fff', fontSize: '14px' }}
+            />
+          </div>
+
+          {/* Custom Rank / Presets */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+            <label style={{ fontSize: '13px', fontWeight: '600', color: 'var(--text-secondary)', textAlign: 'left' }}>Rank / Pangkat Member</label>
+            <input 
+              type="text" 
+              value={rank}
+              onChange={(e) => setRank(e.target.value)}
+              placeholder="Wibu Elite"
+              style={{ padding: '10px 12px', background: 'rgba(0,0,0,0.2)', border: '1px solid var(--border-glass)', borderRadius: 'var(--radius-sm)', color: '#fff', fontSize: '14px', marginBottom: '6px' }}
+            />
+            <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+              {rankPresets.map(preset => (
+                <button
+                  key={preset}
+                  type="button"
+                  onClick={() => setRank(preset)}
+                  style={{ padding: '4px 10px', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border-glass)', borderRadius: '12px', color: rank === preset ? 'var(--accent)' : 'var(--text-secondary)', fontSize: '11px', cursor: 'pointer', transition: 'all 0.2s', borderColor: rank === preset ? 'var(--accent)' : 'var(--border-glass)' }}
+                >
+                  {preset}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Account Info Stats */}
+          <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border-glass)', borderRadius: 'var(--radius-sm)', padding: '12px', fontSize: '12px', color: 'var(--text-muted)', display: 'flex', flexDirection: 'column', gap: '4px', marginTop: '4px', textAlign: 'left' }}>
+            <div>ID Pengguna: <span style={{ color: 'var(--text-secondary)', fontFamily: 'monospace' }}>{user.id || 'N/A'}</span></div>
+            <div>Email Terdaftar: <span style={{ color: 'var(--text-secondary)' }}>{user.email || 'N/A'}</span></div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '4px', borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '4px' }}>
+              <span>Pangkat: <span style={{ color: 'var(--accent)', fontWeight: '600' }}>{rank}</span></span>
+              <span>Status: <span style={{ color: '#10b981', fontWeight: '600' }}>Online 🟢</span></span>
+            </div>
+          </div>
+
+          {/* Action Buttons */}
+          <div style={{ display: 'flex', gap: '10px', marginTop: '8px' }}>
+            <button 
+              type="button" 
+              onClick={onClose} 
+              style={{ flex: 1, padding: '11px', background: 'transparent', border: '1px solid var(--border-glass)', borderRadius: 'var(--radius-sm)', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '14px', fontWeight: '500' }}
+            >
+              Batal
+            </button>
+            <button 
+              type="submit" 
+              style={{ flex: 1, padding: '11px', background: 'var(--accent)', border: 'none', borderRadius: 'var(--radius-sm)', color: 'var(--text-primary)', cursor: 'pointer', fontSize: '14px', fontWeight: '600', boxShadow: '0 0 15px var(--accent-glow)' }}
+            >
+              Simpan
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
   );
 }
 
