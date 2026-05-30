@@ -401,6 +401,85 @@ function getAnimasuSeriesSlug(episodeSlug) {
   return slug;
 }
 
+// Ad Click Shield Component
+// Blocks popup/redirect ads from third-party streaming players (e.g. Filedon, Filemoon, etc.)
+// Works by placing a transparent overlay that absorbs the first few clicks which would normally
+// trigger ad popups, then becomes pointer-events:none to let real player clicks through.
+function AdClickShield() {
+  const [clicksRemaining, setClicksRemaining] = useState(2);
+  const [visible, setVisible] = useState(true);
+  const shieldTimerRef = useRef(null);
+
+  const handleShieldClick = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    setClicksRemaining(prev => {
+      const next = prev - 1;
+      if (next <= 0) {
+        // Hide shield after absorbing enough clicks
+        setVisible(false);
+        // Re-arm shield after 30 seconds (some players inject new ad layers periodically)
+        if (shieldTimerRef.current) clearTimeout(shieldTimerRef.current);
+        shieldTimerRef.current = setTimeout(() => {
+          setClicksRemaining(1);
+          setVisible(true);
+        }, 30000);
+      }
+      return next;
+    });
+  };
+
+  useEffect(() => {
+    // Reset shield when component mounts (new video loaded)
+    setClicksRemaining(2);
+    setVisible(true);
+    return () => {
+      if (shieldTimerRef.current) clearTimeout(shieldTimerRef.current);
+    };
+  }, []);
+
+  if (!visible) return null;
+
+  return (
+    <div
+      className="ad-click-shield"
+      onClick={handleShieldClick}
+      style={{
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        width: '100%',
+        height: '100%',
+        zIndex: 10,
+        cursor: 'pointer',
+        background: 'transparent',
+      }}
+    >
+      {clicksRemaining > 0 && (
+        <div style={{
+          position: 'absolute',
+          bottom: '12px',
+          left: '50%',
+          transform: 'translateX(-50%)',
+          background: 'rgba(0,0,0,0.75)',
+          color: '#fff',
+          padding: '6px 16px',
+          borderRadius: '20px',
+          fontSize: '12px',
+          fontWeight: '600',
+          pointerEvents: 'none',
+          backdropFilter: 'blur(6px)',
+          border: '1px solid rgba(255,255,255,0.1)',
+          whiteSpace: 'nowrap',
+        }}>
+          🛡️ Klik {clicksRemaining}x untuk melewati iklan
+        </div>
+      )}
+    </div>
+  );
+}
+
 // Premium LoginView with Glassmorphism and Google Sign-in simulation
 // Premium LoginView with Glassmorphism and Google Sign-in
 function LoginView({ onLogin, triggerToast }) {
@@ -2770,6 +2849,8 @@ function StreamView({ episodeId, triggerToast, saveToHistory, isSamehadaku = fal
         <div className="stream-main">
           <div className="video-section">
             <div className="video-player-wrapper">
+              {/* Ad Click Shield - absorbs first click that would trigger popup ads */}
+              <AdClickShield />
               <iframe 
                 id="video-player" 
                 src={playerUrl} 
@@ -2778,6 +2859,7 @@ function StreamView({ episodeId, triggerToast, saveToHistory, isSamehadaku = fal
                 title={stream.title}
                 onLoad={handleIframeLoaded}
                 sandbox="allow-scripts allow-same-origin allow-presentation allow-forms"
+                referrerPolicy="no-referrer"
               ></iframe>
             </div>
             
@@ -3440,6 +3522,8 @@ function DonghuaStreamView({ episodeSlug, triggerToast, saveToHistory }) {
         <div className="stream-main">
           <div className="video-section">
             <div className="video-player-wrapper">
+              {/* Ad Click Shield - absorbs first click that would trigger popup ads */}
+              <AdClickShield />
               <iframe
                 id="donghua-video-player"
                 src={playerUrl}
@@ -3447,6 +3531,7 @@ function DonghuaStreamView({ episodeSlug, triggerToast, saveToHistory }) {
                 allowFullScreen
                 title={stream.episode}
                 sandbox="allow-scripts allow-same-origin allow-presentation allow-forms"
+                referrerPolicy="no-referrer"
               ></iframe>
             </div>
 
