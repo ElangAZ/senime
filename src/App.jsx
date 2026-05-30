@@ -886,6 +886,9 @@ export default function App() {
       route.startsWith('#/anime/') ||
       route.startsWith('#/episode/');
 
+    // Login feature commented out / bypassed as requested by user. 
+    // To restore login lockout, uncomment this block.
+    /*
     if (isWatchOrDetail && !user) {
       return (
         <LoginView 
@@ -897,6 +900,7 @@ export default function App() {
         />
       );
     }
+    */
 
     if (route.startsWith('#/donate')) {
       return <DonationView triggerToast={triggerToast} />;
