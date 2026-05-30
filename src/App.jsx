@@ -576,17 +576,14 @@ function LoginView({ onLogin, triggerToast }) {
         <DarkVeil speed={0.4} warpAmount={0.06} noiseIntensity={0.01} resolutionScale={0.75} />
       </div>
       <div className="login-card">
-        {/* Settings button is only visible to the developer in local development mode */}
-        {import.meta.env.DEV && (
-          <button 
-            className="btn-supabase-settings" 
-            onClick={() => setShowConfig(true)}
-            title="Ubah Konfigurasi Supabase"
-          >
-            ⚙️
-          </button>
-        )}
-
+        <button 
+          className="btn-supabase-settings" 
+          onClick={() => setShowConfig(true)}
+          title="Ubah Konfigurasi Supabase"
+          style={{ position: 'absolute', top: '16px', right: '16px', background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '18px', padding: '6px', borderRadius: '50%', transition: 'all 0.2s' }}
+        >
+          ⚙️
+        </button>
 
         <div className="login-logo">
           <Play className="logo-icon animate-pulse" fill="currentColor" size={28} />
@@ -598,79 +595,19 @@ function LoginView({ onLogin, triggerToast }) {
           <span>Supabase Connected</span>
         </div>
 
-        <p className="login-tagline">Gerbang Hiburan Nonton Anime &amp; Donghua Terlengkap</p>
+        <p className="login-tagline" style={{ marginBottom: '28px' }}>Masuk dengan akun Google untuk mulai menonton Anime &amp; Donghua favorit Anda</p>
 
-        <div className="login-tabs">
-          <button 
-            className={`login-tab ${!isRegister ? 'active' : ''}`} 
-            onClick={() => { setIsRegister(false); setUsername(''); setPassword(''); }}
-          >
-            Masuk
-          </button>
-          <button 
-            className={`login-tab ${isRegister ? 'active' : ''}`} 
-            onClick={() => { setIsRegister(true); setUsername(''); setPassword(''); }}
-          >
-            Daftar
-          </button>
-        </div>
-
-        <form onSubmit={handleManualSubmit} className="login-form">
-          <div className="input-group">
-            <span className="input-icon"><User size={18} /></span>
-            <input 
-              type="text" 
-              placeholder={isRegister ? "Buat Username / Email" : "Username atau Email"}
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              required
-            />
-          </div>
-
-          <div className="input-group">
-            <span className="input-icon"><CheckSquare size={18} /></span>
-            <input 
-              type="password" 
-              placeholder={isRegister ? "Buat Password" : "Password Anda"}
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-            />
-          </div>
-
-          {isRegister && (
-            <div className="input-group">
-              <span className="input-icon"><CheckSquare size={18} /></span>
-              <input 
-                type="password" 
-                placeholder="Ulangi Password"
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
-                required
-              />
-            </div>
-          )}
-
-          <button type="submit" className="btn-login-submit">
-            {isRegister ? 'Daftar Sekarang' : 'Masuk ke Senime'}
-          </button>
-        </form>
-
-        <div className="login-divider">
-          <span>atau masuk dengan</span>
-        </div>
-
-        <button onClick={handleGoogleClick} className="btn-google">
+        <button onClick={handleGoogleClick} className="btn-google" style={{ width: '100%', padding: '14px 20px', borderRadius: 'var(--radius-md)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px', fontSize: '15px', fontWeight: '600', transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)', cursor: 'pointer' }}>
           <svg className="google-logo-svg" viewBox="0 0 24 24" width="18" height="18">
             <path fill="#EA4335" d="M12 5.04c1.66 0 3.2.57 4.38 1.69l3.27-3.27C17.68 1.54 14.98 1 12 1 7.35 1 3.37 3.68 1.34 7.62l3.85 2.99C6.12 7.15 8.82 5.04 12 5.04z"/>
             <path fill="#4285F4" d="M23.49 12.27c0-.81-.07-1.59-.2-2.36H12v4.51h6.46c-.29 1.48-1.14 2.73-2.4 3.58l3.73 2.89c2.18-2.01 3.7-4.99 3.7-8.62z"/>
             <path fill="#FBBC05" d="M5.19 14.37c-.25-.76-.39-1.57-.39-2.41s.14-1.65.39-2.41L1.34 6.56C.49 8.2.01 10.04.01 12s.48 3.8 1.33 5.44l3.85-3.07z"/>
             <path fill="#34A853" d="M12 23c3.24 0 5.97-1.07 7.96-2.91l-3.73-2.89c-1.03.69-2.35 1.1-4.23 1.1-3.18 0-5.88-2.11-6.84-5.57L1.31 15.8C3.34 19.74 7.32 23 12 23z"/>
           </svg>
-          <span>Masuk dengan Google</span>
+          <span>Masuk dengan Akun Google</span>
         </button>
 
-        <p className="login-footer">&copy; {new Date().getFullYear()} Senime &bull; Premium Stream Portal</p>
+        <p className="login-footer" style={{ marginTop: '32px' }}>&copy; {new Date().getFullYear()} Senime &bull; Premium Stream Portal</p>
       </div>
 
 
@@ -1081,6 +1018,24 @@ export default function App() {
 
   // Parse Routes
   const renderContent = () => {
+    const isWatchOrDetail = 
+      route.startsWith('#/donghua-episode/') ||
+      route.startsWith('#/donghua-detail/') ||
+      route.startsWith('#/anime/') ||
+      route.startsWith('#/episode/');
+
+    if (isWatchOrDetail && !user) {
+      return (
+        <LoginView 
+          onLogin={(userData) => {
+            setUser(userData);
+            safeStorage.setItem('senime_user', JSON.stringify(userData));
+          }} 
+          triggerToast={triggerToast} 
+        />
+      );
+    }
+
     if (route.startsWith('#/donate')) {
       return <DonationView triggerToast={triggerToast} />;
     } else if (route.startsWith('#/favorites')) {
@@ -1149,28 +1104,7 @@ export default function App() {
     }
   };
 
-  // Lockout logic rendering LoginView if no active session (Re-enabled!)
-  if (!user) {
-    return (
-      <ErrorBoundary>
-        <LoginView 
-          onLogin={(userData) => {
-            setUser(userData);
-            safeStorage.setItem('senime_user', JSON.stringify(userData));
-          }} 
-          triggerToast={triggerToast} 
-        />
-        {toast && (
-          <div className="toast-container">
-            <div className={`toast show ${toast.type}`}>
-              {toast.type === 'success' ? <CheckCircle2 size={16} /> : <AlertCircle size={16} />}
-              <span>{toast.message}</span>
-            </div>
-          </div>
-        )}
-      </ErrorBoundary>
-    );
-  }
+
 
   return (
     <>
