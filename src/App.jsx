@@ -93,6 +93,7 @@ const GENRES_LIST = [
   { title: 'Drama', id: 'drama' },
   { title: 'Fantasy', id: 'fantasy' },
   { title: 'Isekai', id: 'isekai' },
+  { title: 'Harem', id: 'harem' },
   { title: 'Magic', id: 'magic' },
   { title: 'Romance', id: 'romance' },
   { title: 'School', id: 'school' },
