@@ -497,7 +497,15 @@ function getSafeScore(item) {
 }
 
 export default function App() {
-  const [route, setRoute] = useState(window.location.hash || '#/');
+  const [route, setRoute] = useState(() => {
+    const initHash = window.location.hash || '#/';
+    if (initHash.includes('access_token=') || initHash.includes('error=')) {
+      // Replace hash in URL bar silently so router doesn't see invalid views
+      window.history.replaceState(null, '', window.location.pathname + window.location.search);
+      return '#/';
+    }
+    return initHash;
+  });
   const [searchQuery, setSearchQuery] = useState('');
   const [suggestions, setSuggestions] = useState([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
