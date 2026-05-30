@@ -1078,11 +1078,9 @@ export default function App() {
             <a href="#/donghua" className={`nav-link ${route.startsWith('#/donghua') ? 'active' : ''}`}>
               <Film size={16} /> Donghua
             </a>
-            {/*
             <a href="#/donate" className={`nav-link ${route.startsWith('#/donate') ? 'active' : ''}`} style={{ color: 'var(--star)', textShadow: '0 0 10px rgba(251, 191, 36, 0.2)' }}>
               <Star size={16} fill="var(--star)" color="var(--star)" /> Donasi
             </a>
-            */}
           </nav>
 
           <div className="search-box">
@@ -1205,12 +1203,10 @@ export default function App() {
           <Film size={20} />
           <span>Donghua</span>
         </a>
-        {/*
         <a href="#/donate" className={`mobile-nav-item ${route.startsWith('#/donate') ? 'active' : ''}`} style={{ color: route.startsWith('#/donate') ? 'var(--star)' : 'rgba(251, 191, 36, 0.7)' }}>
           <Star size={20} fill={route.startsWith('#/donate') ? 'var(--star)' : 'none'} />
           <span>Donasi</span>
         </a>
-        */}
         <button className="mobile-nav-item" onClick={() => setMobileGenresOpen(true)}>
           <Hash size={20} />
           <span>Genre</span>
