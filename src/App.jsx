@@ -2758,7 +2758,15 @@ function StreamView({ episodeId, triggerToast, saveToHistory, isSamehadaku = fal
   const switchServer = async (server, customServers = null) => {
     setActiveServer(server.serverId);
     setPlayerUrl('about:blank');
-    triggerToast(`Menghubungkan ke server ${server.title}...`);
+    
+    const serverName = (server.title || server.serverId || '').toLowerCase();
+    const isAdHeavy = AD_HEAVY_SERVERS.some(a => serverName.includes(a));
+    if (isAdHeavy) {
+      triggerToast(`Menghubungkan ke ${server.title}... (Server ini memiliki iklan bawaan dari penyedia)`, 'warning');
+    } else {
+      triggerToast(`Menghubungkan ke server ${server.title}...`);
+    }
+    
     startIframeTimeout(server.serverId, customServers);
     
     if (isAnimasu) {
@@ -3449,7 +3457,14 @@ function DonghuaStreamView({ episodeSlug, triggerToast, saveToHistory }) {
   const switchServer = (server) => {
     setActiveServer(server.name);
     setPlayerUrl(server.url);
-    triggerToast(`Menghubungkan ke server ${server.name}...`);
+    
+    const serverName = (server.name || '').toLowerCase();
+    const isAdHeavy = AD_HEAVY_SERVERS.some(a => serverName.includes(a));
+    if (isAdHeavy) {
+      triggerToast(`Menghubungkan ke ${server.name}... (Server ini memiliki iklan bawaan dari penyedia)`, 'warning');
+    } else {
+      triggerToast(`Menghubungkan ke server ${server.name}...`);
+    }
   };
 
   if (loading) {
