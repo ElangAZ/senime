@@ -2259,7 +2259,7 @@ function DetailView({ animeId, triggerToast, saveToHistory, toggleFavorite, isFa
             <div className="mal-actions-row">
               {toggleFavorite && isFavorite && (
                 <button 
-                  onClick={() => toggleFavorite(detail, false, isSamehadaku, isAnimasu)}
+                  onClick={() => toggleFavorite({ ...detail, animeId }, false, isSamehadaku, isAnimasu)}
                   className={`mal-btn-fav ${isFavorite(animeId) ? 'active' : ''}`}
                 >
                   <Heart size={14} fill={isFavorite(animeId) ? '#fff' : 'none'} color="#fff" />
