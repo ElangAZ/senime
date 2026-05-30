@@ -402,91 +402,9 @@ function getAnimasuSeriesSlug(episodeSlug) {
 }
 
 // Premium LoginView with Glassmorphism and Google Sign-in simulation
+// Premium LoginView with Glassmorphism and Google Sign-in
 function LoginView({ onLogin, triggerToast }) {
-  const [isRegister, setIsRegister] = useState(false);
-  const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
-
-  // Supabase Configuration States
-  const [configured, setConfigured] = useState(isSupabaseConfigured());
-  const [showConfig, setShowConfig] = useState(!isSupabaseConfigured());
-  const [supabaseUrlInput, setSupabaseUrlInput] = useState(getSupabaseCredentials().url);
-  const [supabaseKeyInput, setSupabaseKeyInput] = useState(getSupabaseCredentials().key);
-
-  const handleManualSubmit = async (e) => {
-    e.preventDefault();
-    if (!username.trim() || !password.trim()) {
-      triggerToast('Mohon isi semua kolom!', 'error');
-      return;
-    }
-
-    if (!isSupabaseConfigured()) {
-      triggerToast('Database Supabase belum terhubung!', 'error');
-      setShowConfig(true);
-      return;
-    }
-
-    const email = username.trim().includes('@') ? username.trim() : `${username.trim()}@senime.member`;
-
-    if (isRegister) {
-      if (password !== confirmPassword) {
-        triggerToast('Konfirmasi password tidak cocok!', 'error');
-        return;
-      }
-      
-      triggerToast('Sedang mendaftarkan akun...', 'success');
-      const { data, error } = await supabase.auth.signUp({
-        email,
-        password: password.trim(),
-        options: {
-          data: {
-            display_name: username.trim().split('@')[0],
-            avatar_color: `hsl(${Math.floor(Math.random() * 360)}, 70%, 60%)`,
-            avatar_letter: username.trim().charAt(0).toUpperCase()
-          }
-        }
-      });
-
-      if (error) {
-        triggerToast(error.message, 'error');
-      } else {
-        triggerToast('Pendaftaran berhasil! Silakan masuk.', 'success');
-        setIsRegister(false);
-        setPassword('');
-        setConfirmPassword('');
-      }
-    } else {
-      triggerToast('Sedang masuk...', 'success');
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email,
-        password: password.trim()
-      });
-
-      if (error) {
-        triggerToast(error.message, 'error');
-      } else {
-        const sessionUser = data.user;
-        const profileUser = {
-          username: sessionUser.user_metadata?.display_name || sessionUser.email.split('@')[0],
-          email: sessionUser.email,
-          avatarColor: sessionUser.user_metadata?.avatar_color || `hsl(${Math.floor(Math.random() * 360)}, 70%, 60%)`,
-          avatarLetter: (sessionUser.user_metadata?.avatar_letter || sessionUser.email.charAt(0)).toUpperCase(),
-          id: sessionUser.id
-        };
-        triggerToast(`Selamat datang kembali, ${profileUser.username}!`, 'success');
-        onLogin(profileUser);
-      }
-    }
-  };
-
   const handleGoogleClick = async () => {
-    if (!isSupabaseConfigured()) {
-      triggerToast('Database Supabase belum terhubung!', 'error');
-      setShowConfig(true);
-      return;
-    }
-
     triggerToast('Mengalihkan ke Google Sign-In...', 'success');
     const { data, error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
@@ -500,90 +418,18 @@ function LoginView({ onLogin, triggerToast }) {
     }
   };
 
-  if (showConfig) {
-    return (
-      <div className="login-overlay">
-        <div className="login-darkveil-container">
-          <DarkVeil speed={0.4} warpAmount={0.06} noiseIntensity={0.01} resolutionScale={0.75} />
-        </div>
-        <div className="login-card">
-          <div className="login-logo">
-            <Play className="logo-icon animate-pulse" fill="currentColor" size={28} />
-            <span className="logo-text">Se<span>nime</span></span>
-          </div>
-          <p className="login-tagline">Hubungkan ke Database Supabase Anda</p>
-          
-          <div className="supabase-config-info">
-            <span className="supa-badge">SUPABASE INTEGRATION</span>
-            <p className="supa-desc">Gunakan database Supabase Auth Anda untuk login &amp; pendaftaran pengguna secara real-time.</p>
-          </div>
-
-          <form onSubmit={(e) => {
-            e.preventDefault();
-            if (!supabaseUrlInput.trim() || !supabaseKeyInput.trim()) {
-              triggerToast('Silakan lengkapi URL dan Anon Key Supabase!', 'error');
-              return;
-            }
-            saveSupabaseCredentials(supabaseUrlInput, supabaseKeyInput);
-            triggerToast('Supabase terhubung! Me-refresh aplikasi...', 'success');
-            setConfigured(true);
-            setShowConfig(false);
-          }} className="login-form">
-            <div className="input-group">
-              <span className="input-icon"><Play size={16} /></span>
-              <input 
-                type="text" 
-                placeholder="Supabase URL (https://your-proj.supabase.co)"
-                value={supabaseUrlInput}
-                onChange={(e) => setSupabaseUrlInput(e.target.value)}
-                required
-              />
-            </div>
-
-            <div className="input-group">
-              <span className="input-icon"><Hash size={16} /></span>
-              <input 
-                type="password" 
-                placeholder="Supabase Anon Key"
-                value={supabaseKeyInput}
-                onChange={(e) => setSupabaseKeyInput(e.target.value)}
-                required
-              />
-            </div>
-
-            <button type="submit" className="btn-login-submit" style={{ background: 'linear-gradient(135deg, #3ecf8e, #10b981)' }}>
-              Simpan &amp; Hubungkan Database ⚡
-            </button>
-          </form>
-
-          {configured && (
-            <button className="btn-google" style={{ marginTop: '12px' }} onClick={() => setShowConfig(false)}>
-              Kembali ke Login
-            </button>
-          )}
-
-          <p className="login-footer" style={{ marginTop: '20px' }}>
-            Atau masukkan variabel <code>VITE_SUPABASE_URL</code> &amp; <code>VITE_SUPABASE_ANON_KEY</code> di file <code>.env</code>
-          </p>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="login-overlay">
       <div className="login-darkveil-container">
         <DarkVeil speed={0.4} warpAmount={0.06} noiseIntensity={0.01} resolutionScale={0.75} />
       </div>
       <div className="login-card">
-
-
         <div className="login-logo">
           <Play className="logo-icon animate-pulse" fill="currentColor" size={28} />
           <span className="logo-text">Se<span>nime</span></span>
         </div>
         
-        <div className="supabase-status-pill" onClick={() => setShowConfig(true)}>
+        <div className="supabase-status-pill">
           <span className="pulse-dot">⚡</span>
           <span>Supabase Connected</span>
         </div>
@@ -602,8 +448,6 @@ function LoginView({ onLogin, triggerToast }) {
 
         <p className="login-footer" style={{ marginTop: '32px' }}>&copy; {new Date().getFullYear()} Senime &bull; Premium Stream Portal</p>
       </div>
-
-
     </div>
   );
 }
