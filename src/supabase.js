@@ -44,8 +44,8 @@ export const clearSupabaseCredentials = () => {
   window.location.reload();
 };
 
-// Initialize client
-export const supabase = createClient(
-  supabaseUrl || 'https://placeholder-project.supabase.co',
-  supabaseAnonKey || 'placeholder-anon-key'
-);
+// Initialize client with fallback validation
+const finalUrl = supabaseUrl && supabaseUrl.startsWith('http') ? supabaseUrl : 'https://qhwbgtellujecfqdhtbb.supabase.co';
+const finalKey = supabaseAnonKey || 'sb_publishable_D8-kVnFFdGhQ5AsDTqMPeg_qi2VKyGN';
+
+export const supabase = createClient(finalUrl, finalKey);

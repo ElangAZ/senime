@@ -2270,10 +2270,13 @@ function DetailView({ animeId, triggerToast, saveToHistory, toggleFavorite, isFa
               <h2 className="mal-section-title"><Play size={18} className="text-accent" /> Trailer</h2>
               <div className="mal-trailer-container">
                 <iframe
-                  src={`https://www.youtube.com/embed/${malTrailerId || 'qgQkT5uj1co'}`}
+                  src={`https://www.youtube.com/embed/${malTrailerId || 'qgQkT5uj1co'}?rel=0&modestbranding=1`}
                   title={`${detail.title} Official Trailer`}
                   frameBorder="0"
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
                   allowFullScreen
+                  referrerPolicy="strict-origin-when-cross-origin"
+                  loading="lazy"
                   className="mal-trailer-iframe"
                 ></iframe>
               </div>
