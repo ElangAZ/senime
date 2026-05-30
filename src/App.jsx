@@ -85,7 +85,7 @@ const safeStorage = {
 const API_BASE = 'https://www.sankavollerei.com/anime';
 let globalAnimeSource = safeStorage.getItem('nekowatch_anime_source', 'otakudesu');
 
-// Genres list from index.html
+// Genres list expanded from index.html and user requested list
 const GENRES_LIST = [
   { title: 'Action', id: 'action' },
   { title: 'Adventure', id: 'adventure' },
@@ -94,21 +94,154 @@ const GENRES_LIST = [
   { title: 'Fantasy', id: 'fantasy' },
   { title: 'Isekai', id: 'isekai' },
   { title: 'Harem', id: 'harem' },
-  { title: 'Magic', id: 'magic' },
-  { title: 'Romance', id: 'romance' },
+  { title: 'Movie', id: 'movie' },
+  { title: 'Demons', id: 'demons' },
+  { title: 'Game', id: 'game' },
+  { title: 'Historical', id: 'historical' },
+  { title: 'Josei', id: 'josei' },
+  { title: 'Martial Arts', id: 'martial-arts' },
+  { title: 'Military', id: 'military' },
+  { title: 'Music', id: 'music' },
+  { title: 'Psychological', id: 'psychological' },
+  { title: 'Parody', id: 'parody' },
+  { title: 'Police', id: 'police' },
+  { title: 'Samurai', id: 'samurai' },
   { title: 'School', id: 'school' },
   { title: 'Sci-Fi', id: 'sci-fi' },
   { title: 'Seinen', id: 'seinen' },
+  { title: 'Shoujo', id: 'shoujo' },
+  { title: 'Shoujo Ai', id: 'shoujo-ai' },
   { title: 'Shounen', id: 'shounen' },
   { title: 'Slice of Life', id: 'slice-of-life' },
+  { title: 'Space', id: 'space' },
+  { title: 'Super Power', id: 'super-power' },
   { title: 'Supernatural', id: 'supernatural' },
   { title: 'Mystery', id: 'mystery' },
   { title: 'Ecchi', id: 'ecchi' },
   { title: 'Sports', id: 'sports' },
   { title: 'Mecha', id: 'mecha' },
   { title: 'Horror', id: 'horror' },
-  { title: 'Suspense', id: 'suspense' }
+  { title: 'Suspense', id: 'suspense' },
+  { title: 'Thriller', id: 'thriller' },
+  { title: 'Vampire', id: 'vampire' }
 ];
+
+// Character to Anime Search Map
+const CHARACTER_TO_ANIME_MAP = {
+  'luffy': 'One Piece',
+  'zoro': 'One Piece',
+  'nami': 'One Piece',
+  'sanji': 'One Piece',
+  'naruto': 'Naruto',
+  'sasuke': 'Naruto',
+  'kakashi': 'Naruto',
+  'itachi': 'Naruto',
+  'boruto': 'Boruto',
+  'goku': 'Dragon Ball',
+  'vegeta': 'Dragon Ball',
+  'deku': 'Boku no Hero Academia',
+  'midoriya': 'Boku no Hero Academia',
+  'bakugo': 'Boku no Hero Academia',
+  'tanjiro': 'Kimetsu no Yaiba',
+  'nezuko': 'Kimetsu no Yaiba',
+  'zenitsu': 'Kimetsu no Yaiba',
+  'inosuke': 'Kimetsu no Yaiba',
+  'gojo': 'Jujutsu Kaisen',
+  'itadori': 'Jujutsu Kaisen',
+  'sukuna': 'Jujutsu Kaisen',
+  'eren': 'Shingeki no Kyojin',
+  'levi': 'Shingeki no Kyojin',
+  'mikasa': 'Shingeki no Kyojin',
+  'saitama': 'One Punch Man',
+  'rimuru': 'Tensei shitara Slime Datta Ken',
+  'subaru': 'Re:Zero',
+  'emilia': 'Re:Zero',
+  'rem': 'Re:Zero',
+  'kirito': 'Sword Art Online',
+  'asuna': 'Sword Art Online',
+  'kaguya': 'Kaguya-sama',
+  'anya': 'Spy x Family',
+  'loid': 'Spy x Family',
+  'yor': 'Spy x Family',
+  'denji': 'Chainsaw Man',
+  'makima': 'Chainsaw Man',
+  'power': 'Chainsaw Man',
+  'sung jin woo': 'Solo Leveling',
+  'jinwoo': 'Solo Leveling',
+  'tang san': 'Soul Land',
+  'tangsan': 'Soul Land',
+  'xiaowu': 'Soul Land',
+  'xiao wu': 'Soul Land',
+  'xiao yan': 'Battle Through the Heavens',
+  'xiaoyan': 'Battle Through the Heavens',
+  'medusa': 'Battle Through the Heavens',
+  'cailin': 'Battle Through the Heavens',
+  'xun er': 'Battle Through the Heavens',
+  'shi hao': 'Perfect World',
+  'shihao': 'Perfect World',
+  'ye fan': 'Shrouding the Heavens',
+  'yefan': 'Shrouding the Heavens',
+  'lin dong': 'Martial Universe',
+  'lindong': 'Martial Universe',
+  'luo feng': 'Swallowed Star',
+  'luofeng': 'Swallowed Star',
+  'wang lin': 'Renegade Immortal',
+  'wanglin': 'Renegade Immortal',
+  'han li': 'A Record of a Mortals Journey to Immortality',
+  'hanli': 'A Record of a Mortals Journey to Immortality'
+};
+
+// Database of anime characters/cast for sinopsis view
+const SERIES_CHARACTERS = {
+  'one piece': [
+    { name: 'Monkey D. Luffy', role: 'Protagonis (Kapten)', avatar: 'https://api.dicebear.com/7.x/bottts/svg?seed=luffy' },
+    { name: 'Roronoa Zoro', role: 'Pendekar Pedang', avatar: 'https://api.dicebear.com/7.x/bottts/svg?seed=zoro' },
+    { name: 'Nami', role: 'Navigator', avatar: 'https://api.dicebear.com/7.x/bottts/svg?seed=nami' },
+    { name: 'Vinsmoke Sanji', role: 'Koki Kapal', avatar: 'https://api.dicebear.com/7.x/bottts/svg?seed=sanji' }
+  ],
+  'naruto': [
+    { name: 'Naruto Uzumaki', role: 'Protagonis (Hokage)', avatar: 'https://api.dicebear.com/7.x/bottts/svg?seed=naruto' },
+    { name: 'Sasuke Uchiha', role: 'Rival Pendekar', avatar: 'https://api.dicebear.com/7.x/bottts/svg?seed=sasuke' },
+    { name: 'Sakura Haruno', role: 'Ninja Medis', avatar: 'https://api.dicebear.com/7.x/bottts/svg?seed=sakura' },
+    { name: 'Kakashi Hatake', role: 'Guru / Kage', avatar: 'https://api.dicebear.com/7.x/bottts/svg?seed=kakashi' }
+  ],
+  'boruto': [
+    { name: 'Boruto Uzumaki', role: 'Protagonis Utama', avatar: 'https://api.dicebear.com/7.x/bottts/svg?seed=boruto' },
+    { name: 'Sarada Uchiha', role: 'Teammate / Uchiha', avatar: 'https://api.dicebear.com/7.x/bottts/svg?seed=sarada' },
+    { name: 'Mitsuki', role: 'Sahabat Setia', avatar: 'https://api.dicebear.com/7.x/bottts/svg?seed=mitsuki' }
+  ],
+  'perfect world': [
+    { name: 'Shi Hao (Huang Tiandi)', role: 'Kultivator Terkuat', avatar: 'https://api.dicebear.com/7.x/bottts/svg?seed=shihao' },
+    { name: 'Huo Ling\'er', role: 'Istri Kultivasi (Api)', avatar: 'https://api.dicebear.com/7.x/bottts/svg?seed=huolinger' },
+    { name: 'Yun Xi', role: 'Dewi Kaisar', avatar: 'https://api.dicebear.com/7.x/bottts/svg?seed=yunxi' }
+  ],
+  'soul land': [
+    { name: 'Tang San', role: 'Pendiri Tang Sect', avatar: 'https://api.dicebear.com/7.x/bottts/svg?seed=tangsan' },
+    { name: 'Xiao Wu', role: 'Binatang Jiwa Kelinci', avatar: 'https://api.dicebear.com/7.x/bottts/svg?seed=xiaowu' },
+    { name: 'Dai Mubai', role: 'Kapten Macan Putih', avatar: 'https://api.dicebear.com/7.x/bottts/svg?seed=daimubai' }
+  ],
+  'battle through the heavens': [
+    { name: 'Xiao Yan', role: 'Kaisar Api Yan Di', avatar: 'https://api.dicebear.com/7.x/bottts/svg?seed=xiaoyan' },
+    { name: 'Queen Medusa (Cailin)', role: 'Ratu Ular Sembilan Warna', avatar: 'https://api.dicebear.com/7.x/bottts/svg?seed=medusa' },
+    { name: 'Xiao Xun\'er', role: 'Klan Kuno Xun\'er', avatar: 'https://api.dicebear.com/7.x/bottts/svg?seed=xuner' }
+  ],
+  'renegade immortal': [
+    { name: 'Wang Lin', role: 'Protagonis Kultivator', avatar: 'https://api.dicebear.com/7.x/bottts/svg?seed=wanglin' },
+    { name: 'Li Muwan', role: 'Ahli Alkimia (Kekasih)', avatar: 'https://api.dicebear.com/7.x/bottts/svg?seed=limuwan' },
+    { name: 'Situ Nan', role: 'Leluhur Jiwa Spirit', avatar: 'https://api.dicebear.com/7.x/bottts/svg?seed=situnan' }
+  ]
+};
+
+// Helper to query characters dynamically
+function getSeriesCharacters(titleOrSlug) {
+  const normalized = String(titleOrSlug).toLowerCase();
+  for (const [key, chars] of Object.entries(SERIES_CHARACTERS)) {
+    if (normalized.includes(key) || key.replace(/-/g, ' ').includes(normalized) || normalized.replace(/-/g, ' ').includes(key.replace(/-/g, ' '))) {
+      return chars;
+    }
+  }
+  return null;
+}
 
 // Fetch API with automated multi-proxy fallback
 async function fetchAPI(endpoint, source = 'otakudesu') {
@@ -823,7 +956,22 @@ export default function App() {
     e.preventDefault();
     if (searchQuery.trim()) {
       setShowSuggestions(false);
-      window.location.hash = `#/search/${encodeURIComponent(searchQuery.trim())}`;
+      let queryStr = searchQuery.trim();
+      const lower = queryStr.toLowerCase();
+      
+      // Smart character query routing redirection
+      if (CHARACTER_TO_ANIME_MAP[lower]) {
+        queryStr = CHARACTER_TO_ANIME_MAP[lower];
+      } else {
+        for (const [char, anime] of Object.entries(CHARACTER_TO_ANIME_MAP)) {
+          if (lower.includes(char)) {
+            queryStr = anime;
+            break;
+          }
+        }
+      }
+      
+      window.location.hash = `#/search/${encodeURIComponent(queryStr)}`;
     }
   };
 
@@ -2056,6 +2204,26 @@ function DetailView({ animeId, triggerToast, saveToHistory, toggleFavorite, isFa
                 )}
               </div>
             </div>
+
+            {/* Premium Character Roles Showcase panel */}
+            {getSeriesCharacters(detail.title || detail.slug || animeId) && (
+              <div className="detail-synopsis" style={{ marginTop: '12px', flexGrow: 0, background: 'rgba(255, 255, 255, 0.02)' }}>
+                <h3 style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '15px' }}>
+                  <Sparkles size={15} className="text-accent animate-pulse" /> Tokoh &amp; Karakter Utama
+                </h3>
+                <div style={{ display: 'flex', gap: '10px', overflowX: 'auto', padding: '8px 0', scrollbarWidth: 'none' }} className="character-scrollbar">
+                  {getSeriesCharacters(detail.title || detail.slug || animeId).map((char, index) => (
+                    <div key={index} style={{ display: 'flex', alignItems: 'center', gap: '10px', background: 'rgba(255,255,255,0.03)', border: '1px solid var(--border-glass)', padding: '6px 12px', borderRadius: 'var(--radius-sm)', flexShrink: 0 }}>
+                      <img src={char.avatar} alt={char.name} style={{ width: '32px', height: '32px', borderRadius: '50%', border: '1px solid var(--accent)', padding: '2px', background: '#0a0512' }} />
+                      <div style={{ display: 'flex', flexDirection: 'column' }}>
+                        <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)' }}>{char.name}</span>
+                        <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{char.role}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* Grid Info (Bottom of the right column!) */}
             <div className="detail-grid-info">
