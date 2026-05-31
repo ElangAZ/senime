@@ -1295,7 +1295,7 @@ export default function App() {
 
       {/* Footer */}
       <footer className="main-footer">
-        <p>&copy; 2026 NekoWatch. Dibuat oleh Senux. API didukung oleh Sankavollerei.</p>
+        <p>&copy; 2026 Hakayo. Dibuat oleh TripleKFoundation. API didukung oleh Sankavollerei.</p>
       </footer>
     </>
   );
