@@ -1627,7 +1627,7 @@ function DonationView({ triggerToast }) {
                 <ArrowRight size={16} />
               </a>
               <a 
-                href="https://trakteer.id/USERNAME_ANDA" 
+                href="https://trakteer.id/triple_k_foundation" 
                 target="_blank" 
                 rel="noopener noreferrer" 
                 className="btn-payment-portal trakteer"
