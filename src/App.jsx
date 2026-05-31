@@ -1521,13 +1521,13 @@ function DonationView({ triggerToast }) {
   const manualBanks = [
     {
       name: 'BANK CENTRAL ASIA (BCA)',
-      number: '8290382902',
-      holder: 'Jagad Raya Elang'
+      number: 'Nomor Rekening BCA Anda',
+      holder: 'a.n. Admin'
     },
     {
-      name: 'BANK MANDIRI',
-      number: '1270038902341',
-      holder: 'Jagad Raya Elang'
+      name: 'BANK RAKYAT INDONESIA (BRI)',
+      number: 'Nomor Rekening BRI Anda',
+      holder: 'a.n. Admin'
     }
   ];
 
@@ -1547,7 +1547,7 @@ function DonationView({ triggerToast }) {
         <div className="donation-hero">
           <div className="donation-hero-content">
             <span className="donation-badge">
-              <Star size={12} fill="var(--star)" /> DUKUNG SERVER SENIME
+              <Star size={12} fill="var(--star)" /> DUKUNG SERVER KIYOKANIME
             </span>
             <h1 className="donation-title">Bantu Kami Tetap Bertahan &amp; Berkembang</h1>
             <p className="donation-subtitle">
@@ -1568,7 +1568,7 @@ function DonationView({ triggerToast }) {
               </div>
               <p className="progress-footer-text" style={{ textAlign: 'center', marginTop: '8px', fontSize: '12px' }}>
                 Uang yang terkumpul murni digunakan 100% untuk biaya operasional VPS, Domain, dan Server Proxy API. 
-                Terima kasih banyak atas dukungan tulus dari teman-teman untuk menjaga kelangsungan Hakayonime!
+                Terima kasih banyak atas dukungan tulus dari teman-teman untuk menjaga kelangsungan KiyokAnime!
               </p>
             </div>
           </div>
@@ -1618,7 +1618,7 @@ function DonationView({ triggerToast }) {
             </p>
             <div className="digital-donation-links">
               <a 
-                href="https://saweria.co" 
+                href="https://saweria.co/USERNAME_ANDA" 
                 target="_blank" 
                 rel="noopener noreferrer" 
                 className="btn-payment-portal saweria"
@@ -1627,7 +1627,7 @@ function DonationView({ triggerToast }) {
                 <ArrowRight size={16} />
               </a>
               <a 
-                href="https://trakteer.id" 
+                href="https://trakteer.id/USERNAME_ANDA" 
                 target="_blank" 
                 rel="noopener noreferrer" 
                 className="btn-payment-portal trakteer"
